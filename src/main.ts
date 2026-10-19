@@ -836,6 +836,7 @@ function invalidateSource() {
   truth = undefined;
   $("markerLabel").textContent = "MARKERS —";
   $("sourceLabel").textContent = "新しい写真を読み込み中…";
+  status("新しい写真を読み込み中です。読み込み後に解析できます。");
   debug.reset();
   resetResults();
 }

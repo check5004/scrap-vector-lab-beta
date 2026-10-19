@@ -36,8 +36,8 @@ type Diagnostic = { app_build: Build; stages: { id: string; elapsedMs?: number; 
 
 const ready = legacyReady;
 async function openSample(page: Page, sample = 'l-shape') {
-  await page.goto('/'); await ready(page);
-  if (sample !== 'l-shape') { await page.locator(`[data-sample="${sample}"]`).click(); await ready(page); }
+  await page.goto('/'); await ready(page, 'l-shape');
+  if (sample !== 'l-shape') { await page.locator(`[data-sample="${sample}"]`).click(); await ready(page, sample); }
 }
 async function infer(page: Page) {
   await page.locator('#runB').click();
@@ -290,7 +290,7 @@ test('cancelled and repeated local runs preserve prior geometry; a new source re
   expect(new Set(second.local.attempts.map(attempt => attempt.id)).size).toBe(second.local.attempts.length);
   expect(second.local.attempts.length).toBeLessThanOrEqual(80);
   expect(first.llm.status).toBe('not_executed'); expect(second.llm.status).toBe('not_executed');
-  await page.locator('[data-sample="notched"]').click(); await ready(page);
+  await page.locator('[data-sample="notched"]').click(); await ready(page, 'notched');
   await expect(page.locator('[data-apply-candidate]')).toHaveCount(0);
   await expect(page.locator('#tuneBeforeImage')).not.toBeVisible();
   await expect(page.locator('#tuneRestore')).toBeDisabled(); await expect(page.locator('#reviewRun')).toBeDisabled();
@@ -338,7 +338,29 @@ test('invalid manual epsilon and empty threshold recover from the unchanged genu
 
 test('the real known missed hole stays visible as a warning after automatic search', async ({ page }, info) => {
   test.skip(info.project.name === 'mobile', 'Known model limitation runs once'); test.setTimeout(240_000);
-  await openSample(page, 'trapezoid-hole'); await infer(page);
+  await openSample(page);
+  // Hold only delivery of the genuine local sample, never replace image bytes,
+  // neural output or geometry. This exposes the formerly stale calibrated
+  // status deterministically while the next source is still loading.
+  let releaseImage!: () => void;
+  const heldImage = new Promise<void>(resolve => { releaseImage = resolve; });
+  let imageRequested = false;
+  await page.route('**/samples/trapezoid-hole.png', async route => {
+    imageRequested = true; await heldImage; await route.continue();
+  });
+  try {
+    await page.locator('[data-sample="trapezoid-hole"]').click();
+    await expect.poll(() => imageRequested).toBe(true);
+    await expect(page.locator('#sourceLabel')).toContainText('読み込み中');
+    await expect(page.locator('#status')).toContainText('読み込み中');
+    await expect(page.locator('#analysisSummary')).toContainText('読み込み中');
+    await expect(page.locator('#status')).not.toContainText('平面補正できました');
+    await expect(page.locator('#analyze')).toBeDisabled();
+    await expect(page.locator('#runB')).toBeDisabled();
+    releaseImage();
+    await ready(page, 'trapezoid-hole');
+  } finally { releaseImage(); }
+  await infer(page);
   await expect(page.locator('#holes')).toHaveText('0');
   await expect(page.locator('#benchmark')).toContainText('正解 1');
   await expect(page.locator('#warnings')).toContainText('穴');
@@ -434,7 +456,7 @@ test('failed and cancelled test-only API calls retain local geometry, show unkno
   const cancelled = await tuning(page); expect(cancelled.llm.reason).toBe('cancelled'); expect(cancelled.llm.status).toBe('not_evaluated');
   expect(cancelled.llm.chosen_candidate_id).toBeNull(); await expect(page.locator('#tuneCandidates')).not.toContainText('LLM評価の選択候補');
   sameGeometry(await downloadJSON<Measurement>(page, '#exportJson'), before);
-  await page.locator('[data-sample="notched"]').click(); await ready(page); release();
+  await page.locator('[data-sample="notched"]').click(); await ready(page, 'notched'); release();
   await expect(page.locator('#tuneDetails')).toHaveText('未実行'); await expect(page.locator('#exportJson')).toBeDisabled();
   await expect(page.locator('[data-apply-candidate]')).toHaveCount(0);
   const report = await downloadJSON<Diagnostic>(page, '#debugExport');

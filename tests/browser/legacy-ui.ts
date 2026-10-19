@@ -28,17 +28,28 @@ export async function openLegacyDetails(page: Page) {
   await openDetailsFor(page, '#reviewRun');
   await openDetailsFor(page, '[data-sample="l-shape"]');
 }
-export async function sourceReady(page: Page) {
+async function sourceIdle(page: Page, expectedSample?: string) {
+  // A previous source's status can remain visible while the next image decodes.
+  // Never decide whether calibration is needed until that load is actually idle.
+  await expect(page.locator('#analyze')).toBeEnabled({ timeout: 30_000 });
+  await expect(page.locator('#sourceLabel')).not.toContainText('読み込み中');
+  if (expectedSample) {
+    await expect(page.locator(`[data-sample="${expectedSample}"]`)).toHaveClass(/\bactive\b/);
+    await expect(page.locator('#sourceLabel')).toContainText(` / ${expectedSample}`);
+  }
+}
+export async function sourceReady(page: Page, expectedSample?: string) {
+  await sourceIdle(page, expectedSample);
   await expect(page.locator('#status')).toContainText('写真を読み込みました', { timeout: 30_000 });
-  await expect(page.locator('#analyze')).toBeEnabled();
 }
 export async function startLegacyCalibration(page: Page) {
   await sourceReady(page);
   await openDetailsFor(page, '#rectify');
   await page.locator('#rectify').click();
 }
-export async function legacyReady(page: Page) {
+export async function legacyReady(page: Page, expectedSample?: string) {
   await openLegacyDetails(page);
+  await sourceIdle(page, expectedSample);
   await expect(page.locator('#status')).toContainText(/写真を読み込みました|平面補正できました/, { timeout: 30_000 });
   if ((await page.locator('#status').textContent())?.includes('写真を読み込みました'))
     await page.locator('#rectify').click();
