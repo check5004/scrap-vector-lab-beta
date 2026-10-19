@@ -117,7 +117,7 @@ by test discovery alone. The existing one-click and stage-level tests are kept.
 | --- | --- |
 | AI-textured L-shape, desktop and Pixel 7 | Genuine inference timing and pinned model hash; bounded threshold/epsilon search; real candidate overlays; exact 0.501 mm epsilon survives the HTML range, candidate application, polygon diagnostics, and JSON provenance |
 | Before/after | The prior image is decodable; restoring recovers exact vertices, holes, area, calibration, settings, and provenance; candidate list remains usable |
-| Build identity | Header, tuning record, diagnostic export, geometry provenance, and DXF comment agree on `0.3.0-dev.3+<short-sha>` or `+local`; full source commit agrees with the displayed short SHA |
+| Build identity | Header, tuning record, diagnostic export, geometry provenance, and DXF comment agree on `0.3.0-dev.4+<short-sha>` or `+local`; full source commit agrees with the displayed short SHA |
 | Cancellation and repetition | A deterministic same-turn start/duplicate-start/stop sequence retains prior geometry and provenance; repeated runs do not accumulate old attempts; source changes clear comparison, candidates, review state and exports; a new source receives genuine fresh ONNX inference |
 | Invalid manual settings | Deliberately corrupting numeric UI bounds creates collapsed geometry or empty foreground; recovery reuses the original genuine mask and stays within supported settings; ambiguous results retain the previous geometry until manual selection |
 | Known hole miss | The legacy hole fixture still reports its real model miss and truth discrepancy; tuning does not hide hole/semantic-accuracy warnings |

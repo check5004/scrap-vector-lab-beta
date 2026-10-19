@@ -1,3 +1,4 @@
+import { openCurveEditor } from './curve-editor';
 import "./style.css";
 import "./auto-tune.css";
 import "./unified.css";
@@ -584,6 +585,7 @@ function renderCanvas() {
   editor.innerHTML = html;
 }
 function render() {
+  $<HTMLButtonElement>("editCurves").disabled = busy || !!drawing || !!dragging || !geometries[active] || !validateGeometry(geometries[active]!).valid;
   $("exportStatus").textContent = "";
   renderCalibration();
   renderCanvas();
@@ -1797,3 +1799,5 @@ window.addEventListener("pageshow", (event) => {
 restoreProviderKey();
 render();
 void loadSample("l-shape");
+
+$("editCurves").onclick=()=>{if(busy||drawing||dragging)return;const g=measurementGeometry(active);if(g&&validateGeometry(g).valid)openCurveEditor(g,board,{...provenance[active],manual_curve_edit:true,measurement_calibration:currentCalibration(active)?.provenance??null},flatUrl?{url:flatUrl,scale:currentCalibration(active)?.scaleFactor??1,anchor:currentCalibration(active)?.anchor??{x:0,y:0}}:undefined,geometries[active]!);};

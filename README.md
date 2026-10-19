@@ -2,11 +2,13 @@
 
 Smartphone-photo scrap-material vectorization and per-edge measurement PoC. A **separate, static project** with real ArUco calibration, real browser-local neural segmentation, optional GPT-6 Luna visual inference, and a touch-friendly polygon editor.
 
-## Beta 0.3.0-dev.3
+## Beta 0.3.0-dev.4
 
 This beta has one primary flow: choose a photo, choose **クラウドAI（A）** or **この端末のAI（B）**, then press **解析する**. Marker detection, rectification, the selected real AI method, bounded B threshold/epsilon search, and dimensions run continuously in the same scene. B’s optional paid visual-review loop is off by default; enabling it beside the method choice includes its disclosed provider and call cap in that single explicit start. Manual B threshold/epsilon controls, bounded-search candidates and expert visual review are grouped in the closed **解析の詳細設定** within step **02**. The optional upper-edge correction and exports remain in step **03**. Expert per-stage controls and diagnostics are collapsed. **Beta deployment does not modify the production app or its main branch; stable releases use a separately reviewed release workflow.** The separate beta URL is https://check5004.github.io/scrap-vector-lab-beta/ . See [release isolation, source/distribution commit mapping, version contract, usage, and limitations](docs/BETA_RELEASE.md).
 
 Local search uses actual neural masks and does not promise an optimum or improved measurement accuracy. The original result can be compared and restored. The original filled-hole failure remains visible. Beta keys use their own provider-specific namespace and are never imported from production; both URLs still share the same browser origin.
+
+The optional curve editor supports native cubic Bézier handles, local tolerance-bounded fit previews, guarded adjacent-point merging, and SVG/JSON/DXF exports. Drafts survive closing/reopening the same result; they are not saved across reloads. See [curve editing and precision limits](docs/CURVE_EDITING.md).
 
 ## What is implemented
 

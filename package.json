@@ -1,6 +1,6 @@
 {
   "name": "scrap-vector-lab",
-  "version": "0.3.0-dev.3",
+  "version": "0.3.0-dev.4",
   "private": true,
   "type": "module",
   "scripts": {

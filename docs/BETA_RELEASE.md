@@ -1,11 +1,11 @@
 # Isolated automatic-adjustment beta
 
-Release line: **0.3.0-dev.3**. This is a beta of the existing measurement app, not a replacement for the production URL.
+Release line: **0.3.0-dev.4**. This is a beta of the existing measurement app, not a replacement for the production URL.
 
 ## Source and delivery
 
 - Production repository: `check5004/scrap-vector-lab`; production `main` and its Pages deployment are managed separately from this beta.
-- Development source branch: `beta/auto-threshold-20261019` in that repository. No merge or update to production `main` is part of this beta.
+- Development source branch: `beta/curves-20261019` in that repository. No merge or update to production `main` is part of this beta.
 - Distribution repository: `check5004/scrap-vector-lab-beta`.
 - Beta Pages path: `/scrap-vector-lab-beta/`; production path stays `/scrap-vector-lab/`.
 - Each distribution commit contains the exact reviewed source tree plus `release-source.json` with `repository`, `branch`, and the full source `commit`. The distribution commit is the GitHub Actions run's commit; the pinned source commit is the identity displayed by the app.
@@ -13,7 +13,7 @@ Release line: **0.3.0-dev.3**. This is a beta of the existing measurement app, n
 - Both Pages artifact upload and deployment are gated on repository **and** `main`: only `check5004/scrap-vector-lab-beta` can deploy this workflow. Running the source branch cannot deploy production.
 - Future beta updates repeat source review → new source-branch commit → exact distribution copy + updated mapping → tests/container checks → beta Pages. Production promotion requires separate user approval and an explicitly reviewed production deployment change. This beta workflow must not be blindly merged into production.
 
-`SCRAP_SOURCE_COMMIT` is set from the verified mapping and passed into both Vite and Docker. The screen, diagnostic JSON, measurement JSON, SVG metadata, and DXF comment all use `0.3.0-dev.3+<7-character source SHA>` and the same full source SHA. A local, uncommitted build is honestly labeled `+local`. Increment `dev.1`, `dev.2`, etc. for a new reviewed development iteration; distinct CI corrections within an iteration are distinguished by source SHA.
+`SCRAP_SOURCE_COMMIT` is set from the verified mapping and passed into both Vite and Docker. The screen, diagnostic JSON, measurement JSON, SVG metadata, and DXF comment all use `0.3.0-dev.4+<7-character source SHA>` and the same full source SHA. A local, uncommitted build is honestly labeled `+local`. Increment `dev.1`, `dev.2`, etc. for a new reviewed development iteration; distinct CI corrections within an iteration are distinguished by source SHA.
 
 ## Single analysis flow (dev.2)
 
@@ -58,3 +58,7 @@ Unit tests exercise adversarial real-valued masks, bounded search, invalid/full/
 ## dev.3 placement refinement
 
 Step **02 · 解析方法を選ぶ** contains the default-closed **解析の詳細設定**: B foreground threshold and epsilon, local recovery/search/candidate comparison and restore, expert optional LLM review, and A's grid spacing. The primary optional B review switch and call cap remain visible beside method selection. Opening or closing these controls never starts processing or sends a photo. Normal one-click analysis needs no additional interaction. Result-only known-edge correction, editing, dimensions and exports remain in step **03**. Diagnostic stage buttons and processing logs stay in the separate closed diagnostic section.
+
+## Curve editing (dev.4)
+
+Optional same-page curve editor from the measurement canvas. See [curve contract](CURVE_EDITING.md). Original analysis and production are unchanged.

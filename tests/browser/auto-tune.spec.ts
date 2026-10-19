@@ -227,14 +227,14 @@ test('real AI-textured search commits exact epsilon, restores before state, and 
   expect(after.board_size_mm).toEqual(before.board_size_mm);
   await expect(page.locator('#warnings')).toContainText('精度・写真との一致を保証しません');
   const version = await page.locator('#appVersion').innerText();
-  expect(version).toMatch(/^0\.3\.0-dev\.3\+(?:[a-f0-9]{7}|local)$/);
+  expect(version).toMatch(/^0\.3\.0-dev\.4\+(?:[a-f0-9]{7}|local)$/);
   expect(after.provenance.app_build).toEqual(diagnostics.app_build);
   expect(result.app_build).toEqual(diagnostics.app_build);
   expect(diagnostics.app_build.version).toBe(version);
-  expect(diagnostics.app_build.release).toBe('0.3.0-dev.3'); expect(diagnostics.app_build.channel).toBe('beta');
+  expect(diagnostics.app_build.release).toBe('0.3.0-dev.4'); expect(diagnostics.app_build.channel).toBe('beta');
   const source = diagnostics.app_build.source_commit;
   expect(source).toMatch(/^(?:[a-f0-9]{40}|local)$/);
-  expect(version).toBe(`0.3.0-dev.3+${source === 'local' ? source : source.slice(0, 7)}`);
+  expect(version).toBe(`0.3.0-dev.4+${source === 'local' ? source : source.slice(0, 7)}`);
   const dxf = await downloadText(page, '#exportDxf');
   expect(dxf.replaceAll('\r\n', '\n')).toContain(`999\nScrap Vector Lab ${version} source ${source}\n`);
   await page.locator('#tuneRestore').click();
