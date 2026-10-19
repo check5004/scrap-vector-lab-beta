@@ -17,7 +17,8 @@ export type DebugStageId =
   | "contours"
   | "polygon"
   | "api"
-  | "tuning";
+  | "tuning"
+  | "calibration";
 export interface DebugStage {
   id: DebugStageId;
   title: string;
@@ -37,6 +38,7 @@ const labels: Record<DebugStageId, string> = {
   polygon: "実寸ポリゴン",
   api: "外部API",
   tuning: "自動調整",
+  calibration: "既知辺補正",
 };
 export class DebugPanel {
   private stages = new Map<DebugStageId, DebugStage>();

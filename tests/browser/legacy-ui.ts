@@ -1,0 +1,40 @@
+import { expect, type Page } from '@playwright/test';
+
+/** Legacy stage-level regressions deliberately opt into the diagnostic surface.
+ * Normal user-path tests must use the primary Analyze control instead.
+ */
+export async function openDetailsFor(page: Page, selector: string) {
+  const ancestors = page.locator('details').filter({ has: page.locator(selector) });
+  for (const details of await ancestors.all()) {
+    if (!(await details.evaluate(node => node.hasAttribute('open'))))
+      await details.locator(':scope > summary').click();
+  }
+}
+export async function openLegacyDetails(page: Page) {
+  await openDetailsFor(page, '#rectify');
+  await openDetailsFor(page, '#preset');
+  await openDetailsFor(page, '#debugRun');
+  await openDetailsFor(page, '#tuneDetails');
+  await openDetailsFor(page, '#reviewRun');
+  await openDetailsFor(page, '[data-sample="l-shape"]');
+}
+export async function sourceReady(page: Page) {
+  await expect(page.locator('#status')).toContainText('写真を読み込みました', { timeout: 30_000 });
+  await expect(page.locator('#analyze')).toBeEnabled();
+}
+export async function startLegacyCalibration(page: Page) {
+  await sourceReady(page);
+  await openDetailsFor(page, '#rectify');
+  await page.locator('#rectify').click();
+}
+export async function legacyReady(page: Page) {
+  await openLegacyDetails(page);
+  await expect(page.locator('#status')).toContainText(/写真を読み込みました|平面補正できました/, { timeout: 30_000 });
+  if ((await page.locator('#status').textContent())?.includes('写真を読み込みました'))
+    await page.locator('#rectify').click();
+  await expect(page.locator('#status')).toContainText('平面補正できました', { timeout: 30_000 });
+  await expect(page.locator('#runB')).toBeEnabled();
+}
+export async function openEditor(page: Page) {
+  if (await page.locator('#editorSurface').isHidden()) await page.locator('#toggleEditor').click();
+}

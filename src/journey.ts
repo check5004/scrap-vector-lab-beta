@@ -3,6 +3,7 @@ import { cloneGeometry, type Geometry, type Point } from './geometry';
 import type { Board, MarkerDetectionReport, MaskResult, homographyDetails } from './vision';
 import { clamp01, conditionedPlaneMatrix, CSS_PLANE_EXTENT, dimensionEdges, fitPoints, interpolateQuad, interpolateView, interpolateCamera, orientCropCamera, lerp, matrix3d, projectPoint, rectangleQuad, rectangleToQuad, smoothStep, transformPoint, type DimensionEdge, type Quad, type ViewTransform } from './journey-math';
 
+export type JourneyMethod = 'A' | 'B';
 export type JourneyStage = 'source' | 'markers' | 'crop' | 'rectify' | 'mask' | 'contour' | 'dimensions';
 export type JourneyProcessing = 'idle' | 'running' | 'complete' | 'error' | 'cancelled';
 export interface JourneyOptions {
@@ -13,17 +14,18 @@ export interface JourneyOptions {
 }
 export type JourneyHomography = ReturnType<typeof homographyDetails>;
 const STAGES: JourneyStage[] = ['source', 'markers', 'crop', 'rectify', 'mask', 'contour', 'dimensions'];
-const TITLES = ['撮影した写真', '4つの基準を見つける', '基準点の内側を切り出す', '同じ面を、真上から', 'AIが見つけた前景', '画素から輪郭へ', 'かたちを寸法に'];
+const TITLES = ['撮影した写真', '4つの基準を見つける', '基準点の内側を切り出す', 'マーカーの基準平面へ補正', 'AIが見つけた前景', '画素から輪郭へ', 'かたちを寸法に'];
 const SHORT = ['写真', 'マーカー', '切り出し', '平面補正', 'AIマスク', '輪郭', '寸法'];
 const DESCRIPTIONS = [
   'この写真の中で、測定する面をたどります。',
   '検出したマーカーの位置を、写真に重ねています。',
   'ID 0〜3の規定の内側角が、測定範囲の4点です。',
-  '4点の射影変換で、同じ領域を基準寸法の平面に補正します。',
+  '4点の射影変換で、マーカーの基準平面へ補正します。厚みのある側面や高低差は残り、寸法誤差の原因になります。',
   '実際のU²-NetP出力を重ねています。穴や細部の見落としを確認してください。',
   'マスクをなぞった輪郭です。外周と検出された穴を保持します。',
   '直線化した輪郭の各辺を、基準スケールからミリに換算しています。',
 ];
+const METHOD_TITLES: Record<JourneyMethod, string> = { A: 'A · GPT-6 Luna', B: 'B · ローカル U²-NetP' };
 const HOLD = [800, 600, 450, 550, 750, 650, 0];
 const DURATION = [0, 1150, 1500, 1950, 1300, 1250, 1600];
 const NS = 'http://www.w3.org/2000/svg';
@@ -70,6 +72,11 @@ export class MeasurementJourney {
   private simplifiedPath: SVGPathElement;
   private vertexGroup: SVGGElement;
   private dimensionGroup: SVGGElement;
+  private referenceEdgeGroup: SVGGElement;
+  private referenceEdgeHalo: SVGLineElement;
+  private referenceEdgeLine: SVGLineElement;
+  private referenceEdgeBox: SVGRectElement;
+  private referenceEdgeLabel: SVGTextElement;
   private stageTitle: HTMLElement;
   private stageDescription: HTMLElement;
   private detail: HTMLElement;
@@ -85,12 +92,15 @@ export class MeasurementJourney {
   private empty: HTMLElement;
   private resize: ResizeObserver;
   private media = window.matchMedia('(prefers-reduced-motion: reduce)');
+  private method: JourneyMethod = 'B';
   private board?: Board;
   private markerReport?: MarkerDetectionReport;
   private homography?: JourneyHomography;
   private mask?: MaskResult;
   private rawGeometry?: Geometry;
   private geometry?: Geometry;
+  private measurementScale = 1;
+  private referenceEdgeIndex: number | null = null;
   private threshold = 0.5;
   private markers: MarkerNode[] = [];
   private edges: EdgeNode[] = [];
@@ -130,7 +140,7 @@ export class MeasurementJourney {
   constructor(host: HTMLElement, options: JourneyOptions = {}) {
     this.host = host; this.options = options;
     host.classList.add('measurement-journey');
-    host.innerHTML = `<div class="journey-heading"><div><p class="journey-eyebrow">PHOTO → PLANE → MEASURE</p><h2>写真が、寸法になるまで。</h2></div><div class="journey-actions"><button type="button" id="journeyRun" class="primary">写真から寸法まで <span aria-hidden="true">↗</span></button><button type="button" id="journeyEdit">編集・比較</button></div></div><div class="journey-scene" role="img" aria-label="実際の写真と処理結果を連続して表示する計測ビュー"><canvas id="journeySource" class="journey-source"></canvas><div id="journeyPlane" class="journey-plane"><canvas id="journeyRectified"></canvas><canvas id="journeyMask"></canvas></div><svg id="journeyOverlay" class="journey-overlay" aria-hidden="true"></svg><div class="journey-empty">写真を選ぶと、計測の流れをここで確認できます。</div><div class="journey-scene-meta"><span class="journey-scene-index">01 / PHOTO</span><span class="journey-scene-detail"></span></div></div><div class="journey-caption"><div><h3 class="journey-stage-title"></h3><p class="journey-stage-description"></p></div><span class="journey-playback" aria-live="off"></span></div><nav class="journey-steps" aria-label="取得済みの処理段階"></nav><div class="journey-bottom"><div class="journey-controls" aria-label="表示の操作"><button type="button" id="journeyPlay">再生</button><button type="button" id="journeyReplay">最初から</button><button type="button" id="journeySkip">最新の結果へ <span aria-hidden="true">↗</span></button></div><p class="journey-motion-note">表示の停止・省略中も、画像処理は続きます。</p></div><div class="journey-process" role="status" aria-live="polite"><span class="journey-process-label">処理</span><span class="journey-process-text"></span><button type="button" id="journeyCancel" hidden>処理を中止</button></div>`;
+    host.innerHTML = `<div class="journey-heading"><div class="journey-title"><h2>写真から、寸法へ</h2><span class="journey-method" aria-label="選択中の解析方法"></span></div><div class="journey-actions"><button type="button" id="journeyRun" hidden tabindex="-1" aria-hidden="true">解析する</button><button type="button" id="journeyEdit">輪郭を編集</button></div></div><div class="journey-scene" role="img" aria-label="実際の写真と処理結果を連続して表示する計測ビュー"><canvas id="journeySource" class="journey-source"></canvas><div id="journeyPlane" class="journey-plane"><canvas id="journeyRectified"></canvas><canvas id="journeyMask"></canvas></div><svg id="journeyOverlay" class="journey-overlay" aria-hidden="true"></svg><div class="journey-empty">写真を選ぶと、計測の流れをここで確認できます。</div><div class="journey-scene-meta"><span class="journey-scene-index">01 / PHOTO</span><span class="journey-scene-detail"></span></div></div><div class="journey-caption"><div><h3 class="journey-stage-title"></h3><p class="journey-stage-description"></p></div><span class="journey-playback" aria-live="off"></span></div><nav class="journey-steps" aria-label="取得済みの処理段階"></nav><div class="journey-bottom"><div class="journey-controls" aria-label="表示の操作"><button type="button" id="journeyPlay">再生</button><button type="button" id="journeyReplay">最初から</button><button type="button" id="journeySkip">最新の結果へ <span aria-hidden="true">↗</span></button></div><p class="journey-motion-note">表示の停止・省略中も、画像処理は続きます。</p></div><div class="journey-process" role="status" aria-live="polite"><span class="journey-process-label">処理</span><span class="journey-process-text"></span><button type="button" id="journeyCancel" hidden>処理を中止</button></div>`;
     const get = <T extends Element>(selector: string) => host.querySelector<T>(selector)!;
     this.viewport = get('.journey-scene'); this.sourceCanvas = get('#journeySource'); this.flatCanvas = get('#journeyRectified'); this.maskCanvas = get('#journeyMask'); this.plane = get('#journeyPlane'); this.overlay = get('#journeyOverlay');
     this.stageTitle = get('.journey-stage-title'); this.stageDescription = get('.journey-stage-description'); this.detail = get('.journey-scene-detail'); this.processText = get('.journey-process-text'); this.playbackText = get('.journey-playback'); this.steps = get('.journey-steps'); this.empty = get('.journey-empty');
@@ -141,7 +151,15 @@ export class MeasurementJourney {
     this.rawPath = svgElement('path', { class: 'journey-raw', 'data-contour': 'raw', 'fill-rule': 'evenodd' });
     this.simplifiedPath = svgElement('path', { class: 'journey-simplified', 'data-contour': 'simplified', 'fill-rule': 'evenodd' });
     this.vertexGroup = svgElement('g', { class: 'journey-vertices' }); this.dimensionGroup = svgElement('g', { class: 'journey-dimensions' });
-    this.overlay.append(this.shade, this.reference, this.markerGroup, this.rawPath, this.simplifiedPath, this.vertexGroup, this.dimensionGroup);
+    this.referenceEdgeGroup = svgElement('g', { class: 'journey-reference-edge', 'data-reference-edge-highlight': 'true' });
+    this.referenceEdgeHalo = svgElement('line', { class: 'journey-reference-edge-halo' });
+    this.referenceEdgeLine = svgElement('line', { 'data-reference-edge-line': 'true' });
+    this.referenceEdgeBox = svgElement('rect', { rx: '6', height: '26' });
+    this.referenceEdgeLabel = svgElement('text', { 'data-reference-edge-label': 'true' });
+    this.referenceEdgeGroup.append(this.referenceEdgeHalo, this.referenceEdgeLine, this.referenceEdgeBox, this.referenceEdgeLabel);
+    // Selection is above the ordinary dimensions and has its own label, so short
+    // or crowded edges remain identifiable when dimension collision filtering hides them.
+    this.overlay.append(this.shade, this.reference, this.markerGroup, this.rawPath, this.simplifiedPath, this.vertexGroup, this.dimensionGroup, this.referenceEdgeGroup);
     this.playButton.onclick = () => this.reduced ? this.nextStatic() : this.playing ? this.pause() : this.play();
     this.replayButton.onclick = () => this.replay(); this.skipButton.onclick = () => this.skip();
     this.runButton.onclick = () => { if (!this.busy && this.hasSource) void Promise.resolve(this.options.runAll?.()).catch(error => this.fail(error instanceof Error ? error.message : '画像処理を開始できませんでした。')); };
@@ -158,16 +176,29 @@ export class MeasurementJourney {
   }
 
   get runId(): number { return this.token; }
+  get selectedMethod(): JourneyMethod { return this.method; }
   get availableStages(): JourneyStage[] { return this.available().map(index => STAGES[index]); }
 
-  begin(source: HTMLCanvasElement, board: Board): number {
+  /** Changing methods retains calibration, but invalidates all old async results. */
+  setMethod(method: JourneyMethod): number {
+    if (this.destroyed || method === this.method) return this.token;
+    this.stopAnimation(); this.token++; this.method = method; this.playing = false;
+    this.clearAnalysis(this.token);
+    this.followingLatest = false;
+    this.processing = 'idle'; this.processingMessage = this.hasSource ? '方法を選んで「解析する」を押してください' : '写真を選んでください';
+    this.changed();
+    return this.token;
+  }
+
+  begin(source: HTMLCanvasElement, board: Board, method: JourneyMethod = this.method): number {
+    this.method = method;
     this.reset();
     this.board = { ...board };
     try {
       copyCanvas(this.sourceCanvas, source);
       this.hasSource = source.width > 0 && source.height > 0;
       this.sourceCanvas.dataset.sourceSize = JSON.stringify([source.width, source.height]);
-      this.processingMessage = '写真を読み込みました';
+      this.processingMessage = '準備できました。「解析する」を押してください';
       this.playing = this.options.autoplay !== false && !this.reduced;
       this.followingLatest = this.reduced;
       this.holdUntil = performance.now() + HOLD[0];
@@ -179,12 +210,14 @@ export class MeasurementJourney {
   reset(): void {
     this.stopAnimation(); this.token++;
     this.hasSource = this.hasFlat = false; this.board = undefined; this.markerReport = undefined; this.homography = undefined;
-    this.mask = undefined; this.rawGeometry = undefined; this.geometry = undefined;
+    this.mask = undefined; this.rawGeometry = undefined; this.geometry = undefined; this.measurementScale = 1; this.referenceEdgeIndex = null;
     this.position = this.target = 0; this.playing = false; this.followingLatest = false; this.fallback = !this.supportsProjective; this.editing = false; this.analysisLocked = false; this.editMessage = '';
     this.processing = 'idle'; this.processingMessage = '写真を選んでください';
     this.markers = []; this.edges = []; this.vertices = [];
     this.markerGroup.replaceChildren(); this.dimensionGroup.replaceChildren(); this.vertexGroup.replaceChildren();
     this.rawPath.removeAttribute('data-geometry-mm'); this.simplifiedPath.removeAttribute('data-geometry-mm');
+    this.rawPath.removeAttribute('data-geometry-source'); this.simplifiedPath.removeAttribute('data-geometry-source');
+    delete this.detail.dataset.dimensions;
     this.reference.removeAttribute('data-source-corners'); this.reference.setAttribute('points', '');
     this.rawPath.setAttribute('d', ''); this.simplifiedPath.setAttribute('d', '');
     for (const key of ['data-homography', 'data-transform', 'data-corners', 'data-css-transform', 'data-css-size']) this.plane.removeAttribute(key);
@@ -232,7 +265,7 @@ export class MeasurementJourney {
   }
 
   setMask(mask: MaskResult, threshold = 0.5, token = this.token): void {
-    if (!this.accept(token) || this.analysisLocked) return;
+    if (!this.accept(token) || this.analysisLocked || this.method !== 'B') return;
     // Thresholded pixels are exactly the real model probabilities, not an illustrative silhouette.
     if (!Number.isFinite(threshold) || threshold < 0 || threshold > 1 || mask.width * mask.height !== mask.probabilities.length) { this.fail('AIマスクの表示データが不正です。', token); return; }
     try {
@@ -250,28 +283,61 @@ export class MeasurementJourney {
     } catch { this.mask = undefined; this.fallback = true; this.changed(); }
   }
 
-  setGeometry(rawGeometry: Geometry, geometry: Geometry, token = this.token): void {
+  /** A can provide its returned polygon directly; B can retain raw and simplified contours. */
+  setGeometry(geometry: Geometry, token?: number): void;
+  setGeometry(rawGeometry: Geometry, geometry: Geometry, token?: number): void;
+  setGeometry(rawGeometry: Geometry, geometryOrToken?: Geometry | number, suppliedToken = this.token): void {
+    const geometry = typeof geometryOrToken === 'object' ? geometryOrToken : rawGeometry;
+    const token = typeof geometryOrToken === 'number' ? geometryOrToken : suppliedToken;
     if (!this.accept(token) || this.analysisLocked) return;
     const replacement = !!this.geometry;
     const finite = (g: Geometry) => g.outer.length >= 3 && [g.outer, ...g.holes].every(ring => ring.every(p => Number.isFinite(p.x) && Number.isFinite(p.y)));
     if (!finite(rawGeometry) || !finite(geometry)) { this.clearAnalysis(token); this.fail('輪郭の表示データが不正です。', token); return; }
     if (replacement) this.stopAnimation();
-    this.rawGeometry = cloneGeometry(rawGeometry); this.geometry = cloneGeometry(geometry);
+    this.rawGeometry = cloneGeometry(rawGeometry); this.geometry = cloneGeometry(geometry); this.measurementScale = 1; this.referenceEdgeIndex = null;
     this.rawPath.dataset.geometryMm = JSON.stringify(this.rawGeometry); this.simplifiedPath.dataset.geometryMm = JSON.stringify(this.geometry);
+    this.rawPath.dataset.geometrySource = this.method === 'A' ? 'gpt-6-luna-polygon' : 'u2netp-mask-contour';
+    this.simplifiedPath.dataset.geometrySource = this.method === 'A' ? 'gpt-6-luna-polygon' : 'simplified-mask-contour';
     this.buildGeometryNodes();
     if (replacement) { this.playing = false; this.followingLatest = false; this.position = this.target = 6; }
     this.changed();
   }
 
+  /**
+   * Applies a known-edge correction to displayed measurements only. Geometry,
+   * image calibration and playback intent stay unchanged. Invalid or stale
+   * requests are rejected without disturbing the active measurement pipeline.
+   */
+  setMeasurementScale(scale: number, token = this.token): boolean {
+    if (!this.accept(token) || this.analysisLocked || !this.geometry || !Number.isFinite(scale) || scale < 0.25 || scale > 4) return false;
+    if (scale === this.measurementScale) return true;
+    this.measurementScale = scale;
+    this.updateDimensionLabels();
+    this.renderSafely(); this.syncUI();
+    return true;
+  }
+
+  /** Selects an outer edge in unscaled image geometry; null clears the highlight. */
+  setReferenceEdge(index: number | null, token = this.token): boolean {
+    if (!this.accept(token)) return false;
+    if (index !== null && (this.analysisLocked || !this.geometry || !Number.isInteger(index) || index < 0 || index >= this.geometry.outer.length)) return false;
+    if (index === this.referenceEdgeIndex) return true;
+    this.referenceEdgeIndex = index;
+    this.renderSafely(); this.syncUI();
+    return true;
+  }
+
   clearAnalysis(token = this.token): void {
     if (!this.accept(token)) return;
     const showRevision = !this.playing && (this.position >= 4 || !!this.geometry);
-    this.stopAnimation(); this.mask = undefined; this.rawGeometry = undefined; this.geometry = undefined;
+    this.stopAnimation(); this.mask = undefined; this.rawGeometry = undefined; this.geometry = undefined; this.measurementScale = 1; this.referenceEdgeIndex = null;
     this.followingLatest = showRevision;
     if (this.processing === 'error' || this.processing === 'cancelled') { this.processing = 'idle'; this.processingMessage = '取得済みの平面補正から再開できます'; }
     this.maskCanvas.width = this.maskCanvas.height = 1;
     this.maskCanvas.removeAttribute('data-mask-size'); this.maskCanvas.removeAttribute('data-threshold');
     this.rawPath.removeAttribute('data-geometry-mm'); this.simplifiedPath.removeAttribute('data-geometry-mm');
+    this.rawPath.removeAttribute('data-geometry-source'); this.simplifiedPath.removeAttribute('data-geometry-source');
+    delete this.detail.dataset.dimensions;
     this.dimensionGroup.replaceChildren(); this.vertexGroup.replaceChildren(); this.edges = []; this.vertices = [];
     this.position = Math.min(this.position, this.hasFlat ? 3 : this.markerReport ? 1 : 0);
     this.target = this.available().find(index => index >= this.position) ?? this.available().at(-1) ?? 0;
@@ -337,7 +403,7 @@ export class MeasurementJourney {
     const stages = [0];
     if (this.markerReport) stages.push(1);
     if (this.hasFlat && this.homography) stages.push(2, 3);
-    if (this.hasFlat && this.mask) stages.push(4);
+    if (this.method === 'B' && this.hasFlat && this.mask) stages.push(4);
     if (this.hasFlat && this.rawGeometry) stages.push(5);
     if (this.hasFlat && this.geometry) stages.push(6);
     return stages;
@@ -391,14 +457,20 @@ export class MeasurementJourney {
     const complete = this.position >= 6 && !!this.geometry;
     const waiting = this.playing && !this.transition && !available.some(index => index > this.position + 1e-5);
     const playback = !this.hasSource ? 'empty' : this.fallback ? 'fallback' : this.editing ? 'editing' : this.reduced ? 'reduced-motion' : complete ? 'complete' : this.playing ? waiting ? 'waiting' : 'playing' : 'paused';
-    Object.assign(this.host.dataset, { stage: STAGES[stage], playback, processing: this.processing, runId: String(this.token), position: String(this.position), reducedMotion: String(this.reduced), availableStages: available.map(i => STAGES[i]).join(','), followingLatest: String(this.followingLatest) });
-    this.stageTitle.textContent = TITLES[stage]; this.stageDescription.textContent = DESCRIPTIONS[stage];
+    Object.assign(this.host.dataset, { method: this.method, measurementScale: String(this.measurementScale), referenceEdge: this.referenceEdgeIndex === null ? '' : String(this.referenceEdgeIndex), stage: STAGES[stage], playback, processing: this.processing, runId: String(this.token), position: String(this.position), reducedMotion: String(this.reduced), availableStages: available.map(i => STAGES[i]).join(','), followingLatest: String(this.followingLatest) });
+    this.host.querySelector('.journey-method')!.textContent = METHOD_TITLES[this.method];
+    this.stageTitle.textContent = this.method === 'A' && stage === 5 ? 'AIが読み取った輪郭' : TITLES[stage];
+    this.stageDescription.textContent = this.method === 'A' && stage === 5
+      ? 'GPT-6 Lunaが実際に返した頂点を、そのまま輪郭として重ねています。外周や穴が写真と一致するか確認してください。'
+      : this.method === 'A' && stage === 6
+        ? 'GPT-6 Lunaが返した輪郭の各辺を、マーカーの基準スケールでミリ表示しています。厚みや高低差による誤差は残ります。'
+        : DESCRIPTIONS[stage];
     if (stage === 1 && this.markerReport) {
       const report = this.markerReport;
       this.stageDescription.textContent = report.missingIds.length || report.duplicateIds.length ? `実際の検出結果を表示しています。${report.missingIds.length ? `未検出: ID ${report.missingIds.join('・')}。` : ''}${report.duplicateIds.length ? `重複: ID ${report.duplicateIds.join('・')}。` : ''}` : DESCRIPTIONS[1];
     }
-    this.viewport.setAttribute('aria-label', `${TITLES[stage]}。${this.stageDescription.textContent}`);
-    this.host.querySelector('.journey-scene-index')!.textContent = `${String(stage + 1).padStart(2, '0')} / ${STAGES[stage].toUpperCase()}`;
+    this.viewport.setAttribute('aria-label', `${this.stageTitle.textContent}。${this.stageDescription.textContent}${this.referenceEdgeIndex === null ? '' : ` 補正の基準辺 E${this.referenceEdgeIndex + 1} を選択中。`}`);
+    this.host.querySelector('.journey-scene-index')!.textContent = `${String(stage + 1 - (this.method === 'A' && stage > 4 ? 1 : 0)).padStart(2, '0')} / ${STAGES[stage].toUpperCase()}`;
     this.playbackText.textContent = this.fallback ? '静止表示 · 変形表示を利用できません' : this.editing ? this.editMessage : this.reduced ? '動きを抑えて表示 · 段階を選んで確認' : complete ? '表示完了' : this.playing ? waiting ? '次の処理結果を待っています' : '表示を再生中' : this.followingLatest ? '最新の結果を静止表示' : '表示を一時停止';
     this.processText.textContent = this.processingMessage;
     this.playButton.textContent = this.reduced ? '次の段階' : this.playing && !complete ? '一時停止' : '再生';
@@ -407,6 +479,7 @@ export class MeasurementJourney {
     this.replayButton.disabled = !this.hasSource;
     this.skipButton.disabled = !this.hasSource;
     this.runButton.disabled = !this.hasSource || this.busy || !this.options.runAll;
+    this.editButton.hidden = !this.options.onEdit;
     this.editButton.disabled = !this.hasSource || !this.options.onEdit;
     this.cancelButton.hidden = !this.busy || !this.options.onCancel;
     this.host.querySelector('.journey-motion-note')!.textContent = this.reduced ? '自動のズーム・変形は行いません。段階を選ぶと静止表示します。' : '表示の停止・省略中も、画像処理は続きます。';
@@ -414,9 +487,10 @@ export class MeasurementJourney {
     for (const index of available) {
       let button = this.stageButtons.get(index);
       if (!button) {
-        button = document.createElement('button'); button.type = 'button'; button.dataset.journeyStep = STAGES[index]; button.textContent = SHORT[index];
+        button = document.createElement('button'); button.type = 'button'; button.dataset.journeyStep = STAGES[index];
         button.onclick = () => this.inspect(STAGES[index]); this.stageButtons.set(index, button);
       }
+      button.textContent = this.method === 'A' && index === 5 ? 'AI輪郭' : SHORT[index];
       button.setAttribute('aria-current', index === stage ? 'step' : 'false');
       button.classList.toggle('is-past', index < stage); this.steps.append(button);
     }
@@ -437,6 +511,15 @@ export class MeasurementJourney {
     }));
   }
 
+  private updateDimensionLabels(): void {
+    for (const node of this.edges) {
+      const lengthMm = node.edge.lengthMm * this.measurementScale;
+      node.text.setAttribute('data-mm', String(lengthMm));
+      node.text.textContent = `${lengthMm.toFixed(1)} mm`;
+      node.title.textContent = `${node.edge.id}: ${lengthMm} mm`;
+    }
+  }
+
   private renderSafely(): void {
     if (this.destroyed) return;
     try { this.render(this.fallback); }
@@ -454,6 +537,12 @@ export class MeasurementJourney {
     this.overlay.setAttribute('viewBox', `0 0 ${width} ${height}`);
     this.empty.hidden = this.hasSource; this.sourceCanvas.style.display = this.hasSource ? 'block' : 'none'; this.overlay.style.display = this.hasSource ? 'block' : 'none';
     this.plane.style.display = this.hasFlat && this.position >= 1.999 ? 'block' : 'none';
+    this.referenceEdgeGroup.style.display = 'none';
+    if (this.referenceEdgeIndex === null) {
+      this.referenceEdgeGroup.removeAttribute('data-reference-edge-index');
+      this.referenceEdgeGroup.removeAttribute('data-edge-points-mm');
+      this.referenceEdgeLabel.textContent = '';
+    }
     if (!this.hasSource || !this.board) return;
     const p = this.position;
     const sourceFit = fitPoints(rectangleQuad(this.sourceCanvas.width, this.sourceCanvas.height), viewport, padding);
@@ -500,17 +589,49 @@ export class MeasurementJourney {
       const top = Math.min(...corners.map(point => point.y));
       marker.label.setAttribute('x', String(centerX)); marker.label.setAttribute('y', String(Math.max(19, top - 9)));
     }
-    this.maskCanvas.style.opacity = String(this.mask ? clamp01(p - 3) * lerp(0.72, 0.18, clamp01(p - 4)) * (1 - clamp01(p - 5)) : 0);
+    this.maskCanvas.hidden = this.method === 'A';
+    this.maskCanvas.style.opacity = String(this.method === 'B' && this.mask ? clamp01(p - 3) * lerp(0.72, 0.18, clamp01(p - 4)) * (1 - clamp01(p - 5)) : 0);
     const geometryMap = (point: Point) => projectPoint(planeMap!, { x: point.x / this.board!.width * this.flatCanvas.width, y: point.y / this.board!.height * this.flatCanvas.height });
-    this.rawPath.style.opacity = String(this.rawGeometry && planeMap ? clamp01(p - 4) * lerp(1, 0.15, clamp01(p - 5)) : 0);
+    const contourProgress = this.method === 'A' ? clamp01((p - 3) / 2) : clamp01(p - 4);
+    this.rawPath.style.opacity = String(this.rawGeometry && planeMap ? contourProgress * lerp(1, 0.15, clamp01(p - 5)) : 0);
     this.simplifiedPath.style.opacity = this.vertexGroup.style.opacity = this.dimensionGroup.style.opacity = String(this.geometry && planeMap ? clamp01(p - 5) : 0);
-    if (this.rawGeometry && planeMap && p > 4) this.rawPath.setAttribute('d', geometryPath(this.rawGeometry, geometryMap)); else this.rawPath.setAttribute('d', '');
+    if (this.rawGeometry && planeMap && contourProgress > 0) this.rawPath.setAttribute('d', geometryPath(this.rawGeometry, geometryMap)); else this.rawPath.setAttribute('d', '');
     if (this.geometry && planeMap && p > 5) {
       this.simplifiedPath.setAttribute('d', geometryPath(this.geometry, geometryMap));
       for (const vertex of this.vertices) { const point = geometryMap(vertex.point); vertex.element.setAttribute('cx', String(point.x)); vertex.element.setAttribute('cy', String(point.y)); }
       this.positionDimensions(geometryMap, viewport);
     } else this.simplifiedPath.setAttribute('d', '');
+    if (this.geometry && planeMap && this.referenceEdgeIndex !== null) {
+      // Static fallback can still show the original photograph before the flat
+      // artifact. Anchor its selected edge to those source pixels, not the flat box.
+      const referenceMap = staticFallback && p < 2 && this.homography
+        ? (point: Point) => transformPoint(projectPoint(this.homography!.rectified_to_source_h, { x: point.x / this.board!.width * this.flatCanvas.width, y: point.y / this.board!.height * this.flatCanvas.height }), view)
+        : geometryMap;
+      this.positionReferenceEdge(referenceMap, viewport);
+    }
     this.detail.textContent = p >= 5.999 && this.geometry ? this.detail.dataset.dimensions || '' : p >= 3.999 && this.mask ? `${this.mask.width} × ${this.mask.height} · 閾値 ${this.threshold.toFixed(2)}` : p >= 2.999 ? `${this.board.width} × ${this.board.height} mm 基準` : this.markerReport && p >= 0.999 ? `${this.markerReport.markers.length} マーカー検出` : `${this.sourceCanvas.width} × ${this.sourceCanvas.height} px`;
+  }
+
+  private positionReferenceEdge(map: (point: Point) => Point, viewport: { width: number; height: number }): void {
+    const index = this.referenceEdgeIndex!, ring = this.geometry!.outer;
+    const from = ring[index], to = ring[(index + 1) % ring.length];
+    const a = map(from), b = map(to);
+    this.referenceEdgeGroup.style.display = '';
+    this.referenceEdgeGroup.dataset.referenceEdgeIndex = String(index);
+    this.referenceEdgeGroup.dataset.edgePointsMm = JSON.stringify([from, to]);
+    for (const line of [this.referenceEdgeHalo, this.referenceEdgeLine]) {
+      for (const [key, value] of Object.entries({ x1: a.x, y1: a.y, x2: b.x, y2: b.y })) line.setAttribute(key, String(value));
+    }
+    const label = `E${index + 1}`, width = Math.max(36, label.length * 7 + 16);
+    const middle = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, length = Math.hypot(b.x - a.x, b.y - a.y);
+    let nx = -(b.y - a.y) / (length || 1), ny = (b.x - a.x) / (length || 1);
+    const center = map(ring.reduce((sum, point) => ({ x: sum.x + point.x / ring.length, y: sum.y + point.y / ring.length }), { x: 0, y: 0 }));
+    if ((middle.x - center.x) * nx + (middle.y - center.y) * ny < 0) { nx *= -1; ny *= -1; }
+    const x = Math.max(width / 2 + 8, Math.min(viewport.width - width / 2 - 8, middle.x + nx * 24));
+    const y = Math.max(21, Math.min(viewport.height - 43, middle.y + ny * 24));
+    for (const [key, value] of Object.entries({ x: x - width / 2, y: y - 13, width })) this.referenceEdgeBox.setAttribute(key, String(value));
+    this.referenceEdgeLabel.textContent = label;
+    this.referenceEdgeLabel.setAttribute('x', String(x)); this.referenceEdgeLabel.setAttribute('y', String(y + 4));
   }
 
   private positionDimensions(map: (point: Point) => Point, viewport: { width: number; height: number }): void {
@@ -537,7 +658,8 @@ export class MeasurementJourney {
       for (const [key, value] of Object.entries({ x: box.x, y: box.y, width: labelWidth })) node.box.setAttribute(key, String(value));
       node.text.setAttribute('x', String(x)); node.text.setAttribute('y', String(y + 4));
     }
-    this.detail.dataset.dimensions = shown < this.edges.length ? `${shown} / ${this.edges.length} 辺を表示 · 全辺は計測結果へ` : `${shown} 辺 · mm`;
+    const correction = this.measurementScale === 1 ? '' : ` · 既知辺補正 ×${Number(this.measurementScale.toFixed(4))}`;
+    this.detail.dataset.dimensions = (shown < this.edges.length ? `${shown} / ${this.edges.length} 辺を表示 · 全辺は計測結果へ` : `${shown} 辺 · mm`) + correction;
     this.dimensionGroup.dataset.shownEdges = String(shown); this.dimensionGroup.dataset.totalEdges = String(this.edges.length);
   }
 }

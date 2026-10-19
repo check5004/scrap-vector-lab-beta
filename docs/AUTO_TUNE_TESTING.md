@@ -26,17 +26,73 @@ accuracy. Both provider keys are unmistakably synthetic constants.
 - Same-origin model/WASM/image/dictionary assets are genuine, unmodified bytes.
 - No real API key, paid call, or environment credential is needed.
 
+## Unified one-click workflow (dev.2)
+
+`tests/browser/unified-analysis.spec.ts` covers the normal user surface with
+advanced settings closed. Selecting a sample or importing a photo decodes it
+only. One primary Analyze click performs calibration and the selected method:
+
+- B uses real marker detection, rectification, pinned ONNX inference, bounded
+  local candidate search, and matching dimensions/export geometry. A restored
+  synthetic provider key cannot opt the user into external review.
+- A uses strictly local TEST-ONLY provider responses on the selected provider's
+  exact endpoints. It renders the returned top-face polygon and dimensions in
+  the shared journey without inventing a segmentation mask. Mock success includes
+  the required bounded `surface_assessment` fields. Uncertainty, occluded edges
+  and sidewall-risk flags remain visible; an unidentifiable top face fails closed
+  without inventing dimensions. This does not validate live
+  top-face recognition or measurement accuracy.
+- The primary Analyze action consumes the visible disclosure. Legacy A/review
+  consent checkboxes remain unchecked in these tests. Inherited diagnostic
+  stepping cannot turn the main action into a multi-stage workflow.
+- Same-photo A/B switching restores the appropriate cached result, matching
+  metrics, overlay and exported provenance, without new requests. Expert B
+  threshold/epsilon changes, search and candidate adoption switch the radios,
+  metrics and journey back to B consistently. Changing the source invalidates
+  both methods.
+- Optional B review is explicitly switched on, bounded to two mock evaluations,
+  and checked for plateau handling, earlier-best retention and unknown-cost
+  accounting. The underlying candidates and refinement use the real ONNX mask.
+- Cancellation rejects a late mock response, releases input controls, invalidates
+  stale source state, and permits another analysis. A cancelled or failed repeat
+  restores the completed polygon in the scene as well as metrics and exports.
+  First-run B cancellation during a held review retains its genuine local result
+  consistently, labels it `partial_cancelled`, preserves attempted-call/unknown-
+  cost accounting, and cannot accept a late reply. A further cancelled B repeat
+  restores the prior scene/export while retaining its new single sent/unknown-
+  cost attempt as an unapplied diagnostic record, separate from prior provenance. Safe provider failures expose
+  the retry action without leaking provider text.
+- Known-edge correction checks the explicit assumptions gate, exact length and
+  area scaling, original overlay preservation, JSON provenance, full-size SVG
+  extents, repeat application without compounding, out-of-range rejection,
+  clear, rerun and source-change invalidation using a labeled mock A polygon.
+  Visible reference-edge highlighting is checked against original coordinates;
+  saved E4 correction survives A → uncomputed B → A without retargeting to E1.
+- Both methods retain desktop/mobile screenshots; 320 px and 393 px touch-layout
+  checks verify reachable primary controls and no horizontal overflow. Start,
+  held-running and result viewport screenshots are retained on desktop and
+  393 × 740 mobile. Running assertions require the real live-progress message
+  and 44 px primary Cancel simultaneously inside the viewport without scrolling
+  either control separately.
+
+`tests/browser/legacy-ui.ts` explicitly opens the diagnostic UI and presses the
+calibration action after source selection for the existing stage-level tests.
+Those regressions are retained, including inference, manual edits, actual-pixel
+journey comparisons, export, key safety, photo decoding, EXIF orientation,
+marker rejection, review consent, cancellation and bounded search. Hidden legacy
+controls are not used to drive the normal one-click tests.
+
 ## Coverage
 
 | Flow | Assertions |
 | --- | --- |
 | AI-textured L-shape, desktop and Pixel 7 | Genuine inference timing and pinned model hash; bounded threshold/epsilon search; real candidate overlays; exact 0.501 mm epsilon survives the HTML range, candidate application, polygon diagnostics, and JSON provenance |
 | Before/after | The prior image is decodable; restoring recovers exact vertices, holes, area, calibration, settings, and provenance; candidate list remains usable |
-| Build identity | Header, tuning record, diagnostic export, geometry provenance, and DXF comment agree on `0.3.0-dev.1+<short-sha>` or `+local`; full source commit agrees with the displayed short SHA |
+| Build identity | Header, tuning record, diagnostic export, geometry provenance, and DXF comment agree on `0.3.0-dev.2+<short-sha>` or `+local`; full source commit agrees with the displayed short SHA |
 | Cancellation and repetition | A deterministic same-turn start/duplicate-start/stop sequence retains prior geometry and provenance; repeated runs do not accumulate old attempts; source changes clear comparison, candidates, review state and exports; a new source receives genuine fresh ONNX inference |
 | Invalid manual settings | Deliberately corrupting numeric UI bounds creates collapsed geometry or empty foreground; recovery reuses the original genuine mask and stays within supported settings; ambiguous results retain the previous geometry until manual selection |
 | Known hole miss | The legacy hole fixture still reports its real model miss and truth discrepancy; tuning does not hide hole/semantic-accuracy warnings |
-| Explicit review consent | A saved key and Mode A consent cannot start review; review consent and a deliberate Start are required; changing provider clears consent |
+| Explicit starts and review scope | The primary Analyze action authorizes the visible selected method and disclosed recipient; B review stays off unless its optional switch is enabled. Advanced diagnostic review still requires its separate consent and Start; changing provider clears that consent |
 | Provider selection and bounds | Only the selected provider's exact model/authentication endpoints receive mock requests; image count, actual JPEG inputs, output-token cap, no fallback, and OpenAI `store:false` are checked; the one-call limit is enforced and the UI exposes only 1–3 |
 | Two-round review | Refinement searches the real mask; the previous best is carried into the second request; lower second-round scores stop on plateau and retain the earlier evaluated candidate; exact candidate settings remain usable after refinement |
 | Ambiguous review | When real candidates are ambiguous, mocked favorable ratings cannot auto-apply them; the original measurement remains, the UI says “not applied,” warnings persist, and explicit candidate selection is required |
@@ -60,8 +116,8 @@ Prepare assets using the repository's normal setup, then run:
 ```sh
 npm test
 npm run build
-npx playwright test tests/browser/auto-tune.spec.ts --project=chromium
-npx playwright test tests/browser/auto-tune.spec.ts --project=mobile
+npx playwright test tests/browser/unified-analysis.spec.ts tests/browser/auto-tune.spec.ts --project=chromium
+npx playwright test tests/browser/unified-analysis.spec.ts tests/browser/auto-tune.spec.ts --project=mobile
 ```
 
 The standard `npm run test:browser` includes this file. The existing CI workflow
@@ -74,7 +130,7 @@ For a browser-free syntax/discovery check:
 
 ```sh
 npx tsc --noEmit
-npx playwright test tests/browser/auto-tune.spec.ts --list
+npx playwright test --list
 ```
 
 A discovered test, a TypeScript pass, or a unit-test pass is **not** a browser

@@ -27,4 +27,8 @@ if (repository === betaRepository) {
 }
 if (!/^[a-f0-9]{40}$/.test(commit ?? '')) throw Error('Missing full source commit.');
 if (process.env.GITHUB_ENV) await appendFile(process.env.GITHUB_ENV,`SCRAP_SOURCE_COMMIT=${commit}\n`);
-console.log(`Source version: 0.3.0-dev.1+${commit.slice(0,7)}`);
+const {version}=JSON.parse(await readFile('package.json','utf8'));
+if(typeof version!=='string'||!/^\d+\.\d+\.\d+-dev\.\d+$/.test(version))throw Error('Expected explicit development release version.');
+const buildInfo=await readFile('src/build-info.ts','utf8');
+if(!buildInfo.includes(`RELEASE_VERSION = '${version}'`))throw Error('Package and application release versions differ.');
+console.log(`Source version: ${version}+${commit.slice(0,7)}`);

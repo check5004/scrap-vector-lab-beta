@@ -257,11 +257,26 @@ function svgDimensions(ring: Point[], isHole = false): string {
     return `<g data-edge="${i + 1}"><line x1="${numberText(a.x + nx * 3)}" y1="${numberText(a.y + ny * 3)}" x2="${numberText(b.x + nx * 3)}" y2="${numberText(b.y + ny * 3)}"/><text x="${numberText(x)}" y="${numberText(y)}" transform="rotate(${numberText(angle)} ${numberText(x)} ${numberText(y)})">${length.toFixed(2)} mm</text></g>`;
   }).join('\n');
 }
-/** Physical SVG dimensions and viewBox both use millimetres. Holes use evenodd. */
+/**
+ * Keep the board coordinate frame and expand its bounds to include all geometry.
+ * Known-edge scaling may move vertices below zero or beyond the marker board.
+ * Never shift, clip, fit-to-page, or rescale those measurement coordinates.
+ */
+export function svgExportBounds(geometry: Geometry, board: BoardSize): Bounds {
+  assertValidGeometry(geometry); assertBoard(board);
+  const bounds = bbox(geometry);
+  const minX = Math.min(0, bounds.minX), minY = Math.min(0, bounds.minY);
+  const maxX = Math.max(board.width, bounds.maxX), maxY = Math.max(board.height, bounds.maxY);
+  const width = maxX - minX, height = maxY - minY;
+  if (!Number.isFinite(width) || !Number.isFinite(height)) throw new Error('SVG export bounds must be finite millimetres.');
+  return { minX, minY, maxX, maxY, width, height };
+}
+/** Physical SVG dimensions and its full, possibly signed viewBox use 1:1 millimetres. Holes use evenodd. */
 export function createSvg(geometry: Geometry, board: BoardSize, preset = 'custom', provenance: Provenance = {}): string {
   const measurement = buildMeasurement(geometry, board, preset, provenance);
+  const bounds = svgExportBounds(geometry, board);
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="${numberText(board.width)}mm" height="${numberText(board.height)}mm" viewBox="0 0 ${numberText(board.width)} ${numberText(board.height)}">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="${numberText(bounds.width)}mm" height="${numberText(bounds.height)}mm" viewBox="${numberText(bounds.minX)} ${numberText(bounds.minY)} ${numberText(bounds.width)} ${numberText(bounds.height)}">
 <title>Scrap vector measurement — ${escapeXml(preset)}</title>
 <metadata>${escapeXml(JSON.stringify(measurement))}</metadata>
 <g id="geometry" inkscape:groupmode="layer" inkscape:label="Measured geometry"><path d="${[geometry.outer, ...geometry.holes].map(svgRing).join(' ')}" fill="#c2b593" fill-rule="evenodd" stroke="#26382f" stroke-width="0.35"/></g>
@@ -272,15 +287,32 @@ ${geometry.holes.map(hole => svgDimensions(hole, true)).join('\n')}
 </svg>`;
 }
 /** AutoCAD R2000 ASCII DXF: closed LWPOLYLINE entities, INSUNITS=4 (mm). */
-export function createDxf(geometry: Geometry, board: BoardSize, _preset = 'custom', _provenance: Provenance = {}): string {
-  assertValidGeometry(geometry); assertBoard(board);
+export function createDxf(geometry: Geometry, board: BoardSize, _preset = 'custom', provenance: Provenance = {}): string {
+  const bounds = svgExportBounds(geometry, board);
   const fields: (number | string)[] = [999, `Scrap Vector Lab ${APP_BUILD.version} source ${APP_BUILD.source_commit}`];
   const add = (...values: (number | string)[]): void => { fields.push(...values); };
+  // DXF comments allow a bounded numeric calibration summary only. Never copy
+  // arbitrary provider text, keys, image data, or an unchecked metadata string.
+  const calibration = provenance.measurement_calibration;
+  if (calibration && typeof calibration === 'object' && !Array.isArray(calibration)) {
+    const c = calibration as Record<string, unknown>, anchor = c.anchor_mm;
+    if (c.method === 'known_top_edge_uniform_scale' && anchor && typeof anchor === 'object' && !Array.isArray(anchor)) {
+      const a = anchor as Record<string, unknown>;
+      const positive = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0;
+      if (typeof c.selected_outer_edge_index === 'number' && Number.isSafeInteger(c.selected_outer_edge_index) && c.selected_outer_edge_index >= 0 &&
+        positive(c.observed_length_mm) && positive(c.known_length_mm) && positive(c.scale_factor) &&
+        typeof a.x === 'number' && Number.isFinite(a.x) && typeof a.y === 'number' && Number.isFinite(a.y) &&
+        c.known_length_mm / c.observed_length_mm === c.scale_factor) {
+        add(999, `Calibration known_top_edge_uniform_scale edge_index=${c.selected_outer_edge_index} observed_length_mm=${numberText(c.observed_length_mm)} known_length_mm=${numberText(c.known_length_mm)} scale_factor=${numberText(c.scale_factor)} anchor_x_mm=${numberText(a.x)} anchor_y_mm=${numberText(a.y)}`);
+      }
+    }
+  }
   const rings = [geometry.outer, ...geometry.holes];
   // R2000 table heads, records, and entities need unique hexadecimal handles.
   // Reserve 1 for the layer table, 2–3 for layers, and 4 onward for rings.
   const handle = (value: number): string => value.toString(16).toUpperCase();
-  add(0, 'SECTION', 2, 'HEADER', 9, '$ACADVER', 1, 'AC1015', 9, '$HANDSEED', 5, handle(4 + rings.length), 9, '$INSUNITS', 70, 4, 9, '$MEASUREMENT', 70, 1, 9, '$EXTMIN', 10, 0, 20, 0, 30, 0, 9, '$EXTMAX', 10, board.width, 20, board.height, 30, 0, 0, 'ENDSEC');
+  // Reflect the same full board-union-geometry bounds into the unchanged y-up frame.
+  add(0, 'SECTION', 2, 'HEADER', 9, '$ACADVER', 1, 'AC1015', 9, '$HANDSEED', 5, handle(4 + rings.length), 9, '$INSUNITS', 70, 4, 9, '$MEASUREMENT', 70, 1, 9, '$EXTMIN', 10, bounds.minX, 20, board.height - bounds.maxY, 30, 0, 9, '$EXTMAX', 10, bounds.maxX, 20, board.height - bounds.minY, 30, 0, 0, 'ENDSEC');
   add(0, 'SECTION', 2, 'TABLES', 0, 'TABLE', 2, 'LAYER', 5, '1', 330, '0', 100, 'AcDbSymbolTable', 70, 2);
   ([['OUTER', 3], ['HOLES', 1]] as const).forEach(([name, color], i) => {
     add(0, 'LAYER', 5, handle(2 + i), 330, '1', 100, 'AcDbSymbolTableRecord', 100, 'AcDbLayerTableRecord', 2, name, 70, 0, 62, color, 6, 'CONTINUOUS');

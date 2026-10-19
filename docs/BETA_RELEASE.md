@@ -1,6 +1,6 @@
 # Isolated automatic-adjustment beta
 
-Release line: **0.3.0-dev.1**. This is a beta of the existing measurement app, not a replacement for the production URL.
+Release line: **0.3.0-dev.2**. This is a beta of the existing measurement app, not a replacement for the production URL.
 
 ## Source and delivery
 
@@ -13,11 +13,21 @@ Release line: **0.3.0-dev.1**. This is a beta of the existing measurement app, n
 - Both Pages artifact upload and deployment are gated on repository **and** `main`: only `check5004/scrap-vector-lab-beta` can deploy this workflow. Running the source branch cannot deploy production.
 - Future beta updates repeat source review → new source-branch commit → exact distribution copy + updated mapping → tests/container checks → beta Pages. Production promotion requires separate user approval and an explicitly reviewed production deployment change. This beta workflow must not be blindly merged into production.
 
-`SCRAP_SOURCE_COMMIT` is set from the verified mapping and passed into both Vite and Docker. The screen, diagnostic JSON, measurement JSON, SVG metadata, and DXF comment all use `0.3.0-dev.1+<7-character source SHA>` and the same full source SHA. A local, uncommitted build is honestly labeled `+local`. Increment `dev.1`, `dev.2`, etc. for a new reviewed development iteration; distinct CI corrections within an iteration are distinguished by source SHA.
+`SCRAP_SOURCE_COMMIT` is set from the verified mapping and passed into both Vite and Docker. The screen, diagnostic JSON, measurement JSON, SVG metadata, and DXF comment all use `0.3.0-dev.2+<7-character source SHA>` and the same full source SHA. A local, uncommitted build is honestly labeled `+local`. Increment `dev.1`, `dev.2`, etc. for a new reviewed development iteration; distinct CI corrections within an iteration are distinguished by source SHA.
+
+## Single analysis flow (dev.2)
+
+Choose a photo and either **クラウドAI（A）** (external structured polygon inference) or **この端末のAI（B）** (local U²-NetP segmentation), then press **解析する**. The same scene handles actual marker detection, board-plane correction, selected inference, and dimensions. A never visits B’s mask stage. A missing key opens adjacent setup without discarding the photo/method or running B. Initial loading is only “photo ready,” not a completed analysis. Switching A/B displays only that same-input method’s cached result or an explicit unanalysed state.
+
+B automatically runs bounded local adjustment in the normal flow, retaining its pre-adjustment comparison and restore operation in details. Its optional **LLMで画像との一致も確認** setting is off by default. When enabled, provider, image transmission, paid use, and maximum calls are disclosed beside the single Analyze action; the app does not require another per-stage start. The disclosure and maximum calls are captured at that start. Key/provider changes abort the run. Advanced manual controls remain in collapsed diagnostics for troubleshooting, not as mandatory workflow steps. Main Analyze overrides hidden expert step mode so it cannot stall waiting for a hidden Next button.
+
+Computation has its own running/complete/error/cancel state and Cancel button. Playback pause/replay/skip affects only presentation. A failed/cancelled rerun retains a clearly labelled prior completed result for the same input; source/calibration changes invalidate cached results. Retry requires a new explicit click and never silently resends. On a first run that stops after a valid B contour has already completed, that same actual partial contour remains visible in the scene, metrics and exports, with an explicit unfinished-stage warning and `pipeline_completion` metadata. Review attempt/charge records remain even when a prior measurement is restored.
+
+Optional known-top-edge correction is inside closed result details. It scales measurement/export geometry uniformly, never the board grid or photo. See [the geometry, export, and physical-limit contract](../README.md#upper-face-limits-and-optional-known-edge-correction).
 
 ## Local search
 
-Press **閾値・εを自動調整** to search the actual local neural output. If no completed mask is cached, the existing real U²-NetP inference runs first. Search never changes the photograph, ArUco calibration, homography, board dimensions, scale, or model. It uses neither ground-truth fixture data nor photographic color/edge segmentation.
+Normal B Analyze performs local search automatically. The expert **閾値・εを自動調整** button can repeat it against the actual local neural output. If no completed mask is cached, the existing real U²-NetP inference runs first. Search never changes the photograph, ArUco calibration, homography, board dimensions, scale, or model. It uses neither ground-truth fixture data nor photographic color/edge segmentation.
 
 Search is bounded to threshold 0.10–0.90 and epsilon 0.5–10 mm, with epsilon candidates no greater than the current value. Coarse settings, requested bounded refinements, and fine neighbors are tested. At most 80 candidate settings per local search and a 30-second default between-candidate time budget apply. A synchronous contour calculation cannot be interrupted halfway through; cancellation is checked between candidates. Empty/full masks, invalid geometry, excessive complexity, poor fidelity, ambiguous component selection, border proximity, and changing topology are handled explicitly. See [the algorithm and exact numerical guards](AUTO_TUNE_ALGORITHM.md).
 
@@ -27,7 +37,7 @@ The score is an internal heuristic for mask stability and preservation. **It is 
 
 ## Optional visual review
 
-LLM review starts only after the user separately checks the image/cost consent and presses **LLM評価・再調整を開始**. It uses the selected provider and its beta-specific key: OpenRouter `openai/gpt-6-luna`, or direct OpenAI `gpt-6-luna`. There is no automatic cross-provider fallback. No real credential or paid request was used in development verification; provider behavior is covered by explicit mock-response tests and live account access is checked only on the user's start.
+In the normal flow, LLM review starts only when its optional setting is enabled and the user presses **解析する** beside the image/cost disclosure. The separate expert diagnostic action retains its explicit consent and **LLM評価・再調整を開始** button. It uses the selected provider and its beta-specific key: OpenRouter `openai/gpt-6-luna`, or direct OpenAI `gpt-6-luna`. There is no automatic cross-provider fallback. No real credential or paid request was used in development verification; provider behavior is covered by explicit mock-response tests and live account access is checked only on the user's start.
 
 Each request contains a rectified photograph and up to four actual candidate mask/polygon overlays. Images are resized to at most 900 pixels on their long side before transmission. Keys, raw API responses, images, and user filenames are excluded from diagnostic/export records. Printed text in the images is treated as untrusted evidence, not instructions. Responses have a strict schema and runtime validation: candidate IDs must be supplied IDs, scores finite and bounded, and adjustment directions restricted to `lower`, `higher`, or `none`. The model cannot change scale or supply arbitrary executable instructions.
 

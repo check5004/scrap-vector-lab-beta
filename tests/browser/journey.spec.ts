@@ -1,5 +1,6 @@
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
+import { legacyReady, openEditor, startLegacyCalibration } from "./legacy-ui";
 
 type Point = { x: number; y: number };
 type Stage = {
@@ -11,10 +12,7 @@ type Stage = {
 type DiagnosticReport = { stages: Stage[]; log: { at_ms: number; message: string }[] };
 
 const neuralTimeout = 150_000;
-const ready = async (page: Page) => {
-  await expect(page.locator("#status")).toContainText("平面補正できました", { timeout: 30_000 });
-  await expect(page.locator("#runB")).toBeEnabled();
-};
+const ready = legacyReady;
 const infer = async (page: Page) => {
   await page.locator("#runB").click();
   await expect(page.locator("#status")).toContainText("実際のU²-NetP推論が完了", { timeout: neuralTimeout });
@@ -215,7 +213,7 @@ test("the main journey uses real ArUco, ONNX, contour and millimetre artifacts",
   await ready(page);
   await expect(journey(page)).toBeVisible();
   await expect(page.locator("#editorSurface")).toBeHidden();
-  await expect(journey(page)).toHaveAttribute("data-processing", "complete");
+  await expect(journey(page)).toHaveAttribute("data-processing", "idle");
   await noAnalysis(page);
 
   const calibrated = await downloadJSON<DiagnosticReport>(page, "#debugExport");
@@ -333,7 +331,7 @@ test("visual skip never runs unavailable stages or releases a real processing st
   await page.goto("/");
   await ready(page);
   await page.locator("#debugStep").check();
-  await page.locator("#journeyRun").click();
+  await page.locator("#debugRun").click();
   await expect(page.locator("#debugActivity")).toContainText("入力写真で停止中");
   await expect(journey(page)).toHaveAttribute("data-processing", "running");
   await page.locator("#journeySkip").click();
@@ -406,6 +404,7 @@ test("revectorizing, manual editing, rerunning and failed uploads cannot replay 
   const simplified = JSON.parse((await page.locator('#journeyOverlay [data-contour="simplified"]').getAttribute("data-geometry-mm"))!);
   expectPoints(simplified.outer, stage(revised, "polygon").details.outer_vertices_mm);
 
+  await openEditor(page);
   await page.locator("#editC").click();
   await expect(page.locator("#editorSurface")).toBeVisible();
   await expect(journey(page)).toHaveAttribute("data-playback", "editing");
@@ -451,6 +450,7 @@ test("revectorizing, manual editing, rerunning and failed uploads cannot replay 
     name: "no-markers.svg", mimeType: "image/svg+xml",
     buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400"><rect width="600" height="400" fill="white"/></svg>'),
   });
+  await startLegacyCalibration(page);
   await expect(page.locator("#status")).toContainText("見つかりません");
   await expect(journey(page)).toHaveAttribute("data-processing", "error");
   await noAnalysis(page);
@@ -504,7 +504,7 @@ test("narrow touch controls remain reachable without horizontal page overflow", 
     await page.locator("#journey-root").scrollIntoViewIfNeeded();
     const size = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
     expect(size.scroll).toBeLessThanOrEqual(size.client + 1);
-    for (const id of ["journeyPlay", "journeyReplay", "journeySkip", "journeyRun", "journeyEdit"]) {
+    for (const id of ["journeyPlay", "journeyReplay", "journeySkip", "analyze", "journeyEdit"]) {
       const control = page.locator(`#${id}`);
       await control.scrollIntoViewIfNeeded();
       await expect(control).toBeVisible();
@@ -593,6 +593,7 @@ test("all decoded IDs with an individually rotated marker still cannot reveal a 
     return canvas.toDataURL("image/png").split(",")[1];
   });
   await page.locator("#file").setInputFiles({ name: "real-board-one-marker-rotated.png", mimeType: "image/png", buffer: Buffer.from(bytes, "base64") });
+  await startLegacyCalibration(page);
   await expect(page.locator("#status")).toContainText("マーカーの向きが規定と違います");
   await expect(journey(page)).toHaveAttribute("data-processing", "error");
   const report = await downloadJSON<DiagnosticReport>(page, "#debugExport");

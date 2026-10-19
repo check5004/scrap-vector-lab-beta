@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import type { Candidate, SearchAttempt } from '../../src/auto-tune';
 import type { CandidateReview, ReviewAttempt } from '../../src/candidate-review';
 import { providerStorageKey } from '../../src/key-storage';
+import { legacyReady, openDetailsFor as revealControl, openEditor } from './legacy-ui';
 
 // REAL segmentation; TEST-ONLY provider responses. Never substitute a model,
 // probability mask, geometry, photograph, worker message, or inference result.
@@ -33,10 +34,7 @@ type Measurement = {
 };
 type Diagnostic = { app_build: Build; stages: { id: string; elapsedMs?: number; details: Record<string, any> }[] };
 
-async function ready(page: Page) {
-  await expect(page.locator('#status')).toContainText('平面補正できました', { timeout: 30_000 });
-  await expect(page.locator('#autoTune')).toBeEnabled();
-}
+const ready = legacyReady;
 async function openSample(page: Page, sample = 'l-shape') {
   await page.goto('/'); await ready(page);
   if (sample !== 'l-shape') { await page.locator(`[data-sample="${sample}"]`).click(); await ready(page); }
@@ -102,10 +100,7 @@ async function setRange(page: Page, id: 'epsilon' | 'threshold', value: string) 
     input.dispatchEvent(new Event('input', { bubbles: true }));
   }, value);
 }
-async function openDetailsFor(page: Page, id: string) {
-  const details = page.locator('details').filter({ has: page.locator(`#${id}`) }).last();
-  if (!(await details.evaluate(node => node.hasAttribute('open')))) await details.locator('summary').click();
-}
+async function openDetailsFor(page: Page, id: string) { await revealControl(page, `#${id}`); }
 async function prepareReview(page: Page, selected: Provider = 'openrouter') {
   await openDetailsFor(page, 'provider');
   await page.locator('#provider').selectOption(selected);
@@ -232,14 +227,14 @@ test('real AI-textured search commits exact epsilon, restores before state, and 
   expect(after.board_size_mm).toEqual(before.board_size_mm);
   await expect(page.locator('#warnings')).toContainText('精度・写真との一致を保証しません');
   const version = await page.locator('#appVersion').innerText();
-  expect(version).toMatch(/^0\.3\.0-dev\.1\+(?:[a-f0-9]{7}|local)$/);
+  expect(version).toMatch(/^0\.3\.0-dev\.2\+(?:[a-f0-9]{7}|local)$/);
   expect(after.provenance.app_build).toEqual(diagnostics.app_build);
   expect(result.app_build).toEqual(diagnostics.app_build);
   expect(diagnostics.app_build.version).toBe(version);
-  expect(diagnostics.app_build.release).toBe('0.3.0-dev.1'); expect(diagnostics.app_build.channel).toBe('beta');
+  expect(diagnostics.app_build.release).toBe('0.3.0-dev.2'); expect(diagnostics.app_build.channel).toBe('beta');
   const source = diagnostics.app_build.source_commit;
   expect(source).toMatch(/^(?:[a-f0-9]{40}|local)$/);
-  expect(version).toBe(`0.3.0-dev.1+${source === 'local' ? source : source.slice(0, 7)}`);
+  expect(version).toBe(`0.3.0-dev.2+${source === 'local' ? source : source.slice(0, 7)}`);
   const dxf = await downloadText(page, '#exportDxf');
   expect(dxf.replaceAll('\r\n', '\n')).toContain(`999\nScrap Vector Lab ${version} source ${source}\n`);
   await page.locator('#tuneRestore').click();
@@ -431,7 +426,7 @@ test('unfinished C drawings and active vertex drags gate search, review, restora
   test.skip(info.project.name === 'mobile', 'Pointer-down editing gates run once'); test.setTimeout(240_000);
   await openSample(page); await infer(page); await search(page); await prepareReview(page);
   await page.locator('#reviewConsent').check(); await expect(page.locator('#reviewRun')).toBeEnabled();
-  await page.locator('#editC').click(); const edited = await downloadJSON<Measurement>(page, '#exportJson');
+  await openEditor(page); await page.locator('#editC').click(); const edited = await downloadJSON<Measurement>(page, '#exportJson');
   await page.locator('#drawHole').click();
   for (const selector of ['#autoTune', '#reviewRun', '#tuneRestore', '#exportJson']) await expect(page.locator(selector)).toBeDisabled();
   for (const button of await page.locator('[data-apply-candidate]').all()) await expect(button).toBeDisabled();

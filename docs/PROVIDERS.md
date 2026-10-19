@@ -1,6 +1,6 @@
 # Mode A providers
 
-Mode A supports two explicit destinations. Selecting a provider never switches automatically to another provider or model. API calls require the user's own key and the UI's explicit photo/paid-usage consent.
+Mode A supports two explicit destinations. Selecting a provider never switches automatically to another provider or model. API calls require the user's own key and the single explicit Analyze action beside the photo/paid-usage disclosure. Expert standalone API controls retain their separate consent checkbox.
 
 | Provider | Exact requested model | Inference endpoint |
 | --- | --- | --- |
@@ -17,7 +17,7 @@ Mode A supports two explicit destinations. Selecting a provider never switches a
 
 ## Key handling and safety
 
-`validateProviderKey(provider, key)` checks the key locally and returns a safe message or `null`. OpenRouter requires the currently documented `sk-or-v1-` prefix; OpenAI rejects `sk-or-` keys. Changing provider restores only the selected provider's validated saved key and clears photo/paid-usage consent. These checks stop a wrong-provider key before any request; they do not establish that a key is valid.
+`validateProviderKey(provider, key)` checks the key locally and returns a safe message or `null`. OpenRouter requires the currently documented `sk-or-v1-` prefix; OpenAI rejects `sk-or-` keys. Changing provider restores only the selected provider's validated saved key and invalidates any in-flight captured authorization. These checks stop a wrong-provider key before any request; they do not establish that a key is valid.
 
 The API provider layer only holds key material in function-local memory. A separate UI key store persists user-entered keys in this browser at the user's explicit request. Keys are never put in exports, diagnostic reports, URLs, analytics, logs or sessionStorage. Authenticated fetches use the selected provider's fixed endpoints, omit cookies and referrers, and reject redirects. No arbitrary endpoint configuration is supported. This browser BYOK proof of concept remains appropriate only on a trusted page/device; production should use a secure authenticated backend.
 
@@ -66,4 +66,4 @@ Responses must report the requested Luna model (or a dated snapshot of it), comp
 
 ## Beta candidate review
 
-The `0.3.0-dev` beta also offers a separately consented candidate-review loop. It sends the rectified photograph and actual mask/polygon overlays only when the user presses its start button, uses the selected provider, and is capped at 1–3 calls. Tokens and provider-reported costs are shown; missing costs stay unknown. See [the beta contract](BETA_RELEASE.md). Beta keys use `scrap-vector-lab-beta:provider-key:v1:*`; production key names are not read or migrated. GitHub Pages project paths still share an origin, so this avoids collisions rather than creating a security boundary.
+The `0.3.0-dev.2` beta offers an optional candidate-review loop, off by default. It sends the rectified photograph and actual mask/polygon overlays only when the user enables that setting beside method selection and presses Analyze (or explicitly uses its expert standalone start), uses the selected provider, and is capped at 1–3 calls. Tokens and provider-reported costs are shown; missing costs stay unknown. See [the beta contract](BETA_RELEASE.md). Beta keys use `scrap-vector-lab-beta:provider-key:v1:*`; production key names are not read or migrated. GitHub Pages project paths still share an origin, so this avoids collisions rather than creating a security boundary.

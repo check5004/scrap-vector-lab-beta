@@ -32,7 +32,7 @@ For actual operation-by-operation execution, open diagnostics and use **1工程�
 
 A new photo or calibration invalidates the previous journey's downstream artifacts. A new sample can be chosen while only playback remains active. Source controls remain locked during real processing or a diagnostic step wait; finish or cancel that processing first.
 
-Rerunning Mode B clears its old mask, contours and dimensions before the replacement result exists. Adjusting threshold or simplification tolerance rebuilds the affected downstream stages from the current real mask. Opening **編集・比較** or entering Mode C stops playback and removes the journey's neural overlays and dimensions. The editor retains its real geometry for review/editing; manually edited dimensions belong to Mode C. Replay does not resurrect those removed overlays. Run Mode B again, or explicitly recompute from the retained mask with threshold/tolerance controls, to build a current neural journey.
+Rerunning Mode B clears its old mask, contours and dimensions before the replacement result exists. Adjusting threshold or simplification tolerance rebuilds the affected downstream stages from the current real mask. Opening **編集・比較** or entering Mode C stops playback and removes the journey's neural overlays and dimensions. The editor retains its real geometry for review/editing; manually edited dimensions belong to Mode C. Replay does not resurrect those removed overlays. Close the editor or select A/B to restore that method’s cached same-input result. Analyze explicitly starts new processing; replay never starts an API call.
 
 ## Phones, accessibility and reduced motion
 
@@ -66,3 +66,9 @@ npx playwright test tests/browser/journey.spec.ts
 Successful runs save clipped source, marker, crop, rectified, mask, contour and dimension screenshots, a real 180°-rotated-photo projective midpoint, an invalid-marker-orientation scene, and mobile layout captures under Playwright's `test-results` output. Review these artifacts for visual continuity as well as reading assertion results.
 
 The full browser command includes desktop Chromium and Pixel 7 emulation. CI also exercises the built app and container. If the execution sandbox blocks launching Chromium, record browser checks as **not run**; do not change browser security flags, escalate, or claim a pass from TypeScript compilation. Keep unit/build, browser and physical-device verification results separate.
+
+## dev.2 shared analysis scene
+
+A and B now share the primary scene and one Analyze action. A uses returned upper-face polygons directly and skips mask stages. B shows actual neural probabilities/mask/contours. Method switching restores only the same input’s completed result for that method, otherwise it shows an unanalysed state. Expert B-only changes explicitly switch the frame and metrics to B. Closing the optional editor returns to the selected A/B result; manual C geometry stays stored separately.
+
+Known-top-edge correction changes dimension label values only. Projective paths, vertices, image buffers, homography and board grid remain unchanged. Its absolute factor resets on new geometry, source or analysis reset; applying it repeatedly does not compound. Computation and presentation remain independent, and an intentional playback pause is not overridden by inference completion.

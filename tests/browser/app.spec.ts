@@ -1,10 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
-const ready = async (page: any) => {
-  await expect(page.locator("#status")).toContainText("平面補正できました", {
-    timeout: 30000,
-  });
-};
+import { legacyReady, openDetailsFor, openEditor, startLegacyCalibration } from "./legacy-ui";
+const ready = legacyReady;
 const infer = async (page: any) => {
   await page.locator("#runB").click();
   await expect(page.locator("#status")).toContainText(
@@ -35,6 +32,7 @@ test("real marker detection, ONNX inference, edits, export, no paid requests", a
   await expect(page.locator("#benchmark")).toContainText(
     "MODE B · 境界平均誤差",
   );
+  await openEditor(page);
   await page.locator("#editC").click();
   await expect(page.locator("[data-pin]").first()).toBeVisible();
   const initial = await page.locator("#vertices").innerText();
@@ -96,7 +94,8 @@ test("real three-sample benchmark preserves and reports model failure on a hole"
     if (sample === "trapezoid-hole") {
       await expect(page.locator("#benchmark")).toContainText("正解 1");
       await expect(page.locator("#warnings")).toContainText("穴");
-      await page.locator("#editC").click();
+      await openEditor(page);
+  await page.locator("#editC").click();
       await page.locator("#drawHole").click();
       await page.locator("#editor").scrollIntoViewIfNeeded();
       const points = await page.locator("#editor").evaluate((svg: any) => {
@@ -130,7 +129,7 @@ test("missing marker fails closed, custom board rescales, invalid key stays out 
   await page.locator("#rectify").click();
   await ready(page);
   await expect(page.locator("#scale")).toContainText("2000 × 1000");
-  await page.locator("summary").filter({ hasText: "A · GPT-6 Luna" }).click();
+  await openDetailsFor(page, "#apiKey");
   await page.locator("#apiKey").fill("test-not-a-real-key");
   expect(
     await page.evaluate(
@@ -148,6 +147,7 @@ test("missing marker fails closed, custom board rescales, invalid key stays out 
       '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400"><rect width="600" height="400" fill="white"/></svg>',
     ),
   });
+  await startLegacyCalibration(page);
   await expect(page.locator("#status")).toContainText("見つかりません");
   await expect(page.locator("#runB")).toBeDisabled();
   await expect(page.locator("#debugDetails")).toContainText("missing_ids");
@@ -325,7 +325,7 @@ test("provider routing blocks wrong keys locally and shows a mocked 401 without 
   await page.route("https://api.openai.com/**", (route) => route.abort());
   await page.goto("/");
   await ready(page);
-  await page.locator("summary").filter({ hasText: "A · GPT-6 Luna" }).click();
+  await openDetailsFor(page, "#apiKey");
   await expect(page.locator("#provider")).toHaveValue("openrouter");
   await page.locator("#apiKey").fill("sk-proj-test-only");
   await page.locator("#consent").check();

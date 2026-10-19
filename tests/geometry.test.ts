@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   bbox, buildMeasurement, cloneGeometry, compareGeometry, createDxf, createJson, createSvg,
   distance, douglasPeucker, edgeAngle, edgeMeasurements, geometryArea, nearAxisSnap, pointInRing,
-  pointToSegmentDistance, polygonArea, segmentsIntersect, signedArea, simplifyGeometry, validateGeometry,
+  pointToSegmentDistance, polygonArea, segmentsIntersect, signedArea, simplifyGeometry, svgExportBounds, validateGeometry,
   type Geometry, type Point,
 } from '../src/geometry.ts';
 
@@ -111,6 +111,36 @@ test('SVG exports mm units, board viewBox, evenodd holes, and dimensions layer',
   assert.match(svg, /&lt;unsafe &amp; title&gt;/); assert.doesNotMatch(svg, /<unsafe/);
   assert.equal((svg.match(/ Z/g) ?? []).length, 2);
 });
+test('SVG expands its physical page and viewBox for signed calibrated geometry without shifting or rescaling', () => {
+  const original = geometry(rectangle(-290, -40, 600, 300), [rectangle(-200, -20, 40, 30), rectangle(270, 210, 20, 30)]);
+  const before = cloneGeometry(original), bounds = svgExportBounds(original, board);
+  assert.deepEqual(bounds, { minX: -290, minY: -40, maxX: 310, maxY: 260, width: 600, height: 300 });
+  const svg = createSvg(original, board);
+  assert.match(svg, /width="600mm" height="300mm" viewBox="-290 -40 600 300"/);
+  assert.match(svg, /<path d="M -290 -40 L 310 -40 L 310 260 L -290 260 Z M -200 -20 L -160 -20 L -160 10 L -200 10 Z M 270 210 L 290 210 L 290 240 L 270 240 Z"/);
+  assert.match(svg, /fill-rule="evenodd"/);
+  assert.equal((svg.match(/ Z/g) ?? []).length, 3);
+  const [widthMm, heightMm, minX, minY, widthUnits, heightUnits] = svg.match(/width="([\d.]+)mm" height="([\d.]+)mm" viewBox="([-\d.]+) ([-\d.]+) ([\d.]+) ([\d.]+)"/)!.slice(1).map(Number);
+  assert.equal(widthMm / widthUnits, 1); assert.equal(heightMm / heightUnits, 1);
+  assert.ok([original.outer, ...original.holes].flat().every(p => p.x >= minX && p.x <= minX + widthUnits && p.y >= minY && p.y <= minY + heightUnits));
+  const json = JSON.parse(createJson(original, board));
+  assert.deepEqual(json.outer_vertices_mm.map(({ x, y }: Point) => ({ x, y })), original.outer);
+  const entities = dxfPolylines(createDxf(original, board));
+  [original.outer, ...original.holes].forEach((ring, i) => {
+    assert.deepEqual(entities[i].filter(([code]) => code === '10').map(([, value]) => +value), ring.map(p => p.x));
+    assert.deepEqual(entities[i].filter(([code]) => code === '20').map(([, value]) => +value), ring.map(p => board.height - p.y));
+  });
+  assert.deepEqual(original, before);
+});
+test('SVG export bounds retain the board extent when only one side is exceeded', () => {
+  assert.deepEqual(svgExportBounds(geometry(rectangle(-10, 20, 30, 40)), board),
+    { minX: -10, minY: 0, maxX: 220, maxY: 180, width: 230, height: 180 });
+  assert.deepEqual(svgExportBounds(geometry(rectangle(200, 170, 40, 30)), board),
+    { minX: 0, minY: 0, maxX: 240, maxY: 200, width: 240, height: 200 });
+  assert.deepEqual(svgExportBounds(L, board), { minX: 0, minY: 0, maxX: 220, maxY: 180, width: 220, height: 180 });
+  assert.throws(() => svgExportBounds(L, { width: 0, height: 180 }), /Board/);
+  assert.throws(() => svgExportBounds({ outer: [], holes: [] }, board), /three vertices/);
+});
 function dxfPairs(dxf: string): [string, string][] { const lines = dxf.trim().split('\n'); return Array.from({ length: lines.length / 2 }, (_, i) => [lines[i * 2], lines[i * 2 + 1]]); }
 function dxfPolylines(dxf: string): [string, string][][] {
   const pairs = dxfPairs(dxf), entities: [string, string][][] = [];
@@ -130,6 +160,37 @@ test('DXF holes are independently closed LWPOLYLINE entities on HOLES layer', ()
   assert.equal(entities.length, 3);
   assert.deepEqual(entities.map(e => e.find(([code]) => code === '8')?.[1]), ['OUTER', 'HOLES', 'HOLES']);
   assert.ok(entities.every(e => e.some(([code, value]) => code === '70' && value === '1')));
+});
+test('DXF extents include signed corrected geometry and holes in the actual y-up frame without translation', () => {
+  const original = geometry(rectangle(-290, -40, 600, 300), [rectangle(-200, -20, 40, 30), rectangle(270, 210, 20, 30)]);
+  const dxf = createDxf(original, board), entities = dxfPolylines(dxf);
+  assert.match(dxf, /\$EXTMIN\n10\n-290\n20\n-80\n30\n0\n/);
+  assert.match(dxf, /\$EXTMAX\n10\n310\n20\n220\n30\n0\n/);
+  assert.equal(entities.length, 3);
+  [original.outer, ...original.holes].forEach((ring, i) => {
+    const x = entities[i].filter(([code]) => code === '10').map(([, value]) => +value);
+    const y = entities[i].filter(([code]) => code === '20').map(([, value]) => +value);
+    assert.deepEqual(x, ring.map(p => p.x)); assert.deepEqual(y, ring.map(p => board.height - p.y));
+    assert.ok(x.every(value => value >= -290 && value <= 310)); assert.ok(y.every(value => value >= -80 && value <= 220));
+  });
+  const partlyOutside = createDxf(geometry(rectangle(-10, 20, 30, 40)), board);
+  assert.match(partlyOutside, /\$EXTMIN\n10\n-10\n20\n0\n30\n0\n/);
+  assert.match(partlyOutside, /\$EXTMAX\n10\n220\n20\n180\n30\n0\n/);
+});
+test('DXF calibration comments include validated numeric reference fields only', () => {
+  const calibration = { method: 'known_top_edge_uniform_scale', selected_outer_edge_index: 0,
+    observed_length_mm: 100, known_length_mm: 90, scale_factor: .9, anchor_mm: { x: 13, y: 17 },
+    selected_outer_edge: 'provider-private-body\n0\nEOF', unexpected: 'provider-private-body' };
+  const dxf = createDxf(L, board, 'provider-private-body', { measurement_calibration: calibration, arbitrary: 'provider-private-body' });
+  assert.match(dxf, /999\nCalibration known_top_edge_uniform_scale edge_index=0 observed_length_mm=100 known_length_mm=90 scale_factor=0\.9 anchor_x_mm=13 anchor_y_mm=17\n/);
+  assert.doesNotMatch(dxf, /provider-private-body/);
+  for (const invalid of [{ ...calibration, method: 'provider-private-body' }, { ...calibration, scale_factor: Infinity },
+    { ...calibration, known_length_mm: 'provider-private-body\n0\nEOF' }, { ...calibration, observed_length_mm: 0 },
+    { ...calibration, selected_outer_edge_index: -1 }, { ...calibration, anchor_mm: { x: NaN, y: 0 } },
+    { ...calibration, scale_factor: 2 }]) {
+    const ignored = createDxf(L, board, 'custom', { measurement_calibration: invalid });
+    assert.doesNotMatch(ignored, /Calibration|provider-private-body|Infinity|NaN/);
+  }
 });
 test('clone and exports never mutate input geometry', () => {
   const source = cloneGeometry(L), saved = JSON.stringify(source), clone = cloneGeometry(source);

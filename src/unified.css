@@ -1,0 +1,346 @@
+/* Single, continuous beta workflow. Loaded after the legacy component styles. */
+:root {
+  --lab-paper: #f5f3ed;
+  --lab-card: #fdfcf8;
+  --lab-ink: #29372e;
+  --lab-muted: #697366;
+  --lab-line: #dce0d4;
+  --lab-green: #294f38;
+  --lab-clay: #a85a3a;
+}
+.unified-app { color: var(--lab-ink); background: var(--lab-paper); min-height: 100vh; }
+.unified-app [hidden] { display: none !important; }
+.unified-app button, .unified-app select, .unified-app input { font: inherit; }
+.unified-app button { min-height: 44px; border-radius: 9px; font-size: 12px; transition: background-color 120ms ease, border-color 120ms ease; }
+.unified-app button:focus-visible, .unified-app a:focus-visible, .unified-app input:focus-visible, .unified-app select:focus-visible, .unified-app summary:focus-visible { outline: 3px solid #c99568; outline-offset: 4px; }
+.unified-app button.primary { background: var(--lab-green); border-color: var(--lab-green); }
+.unified-app button.primary:hover:not(:disabled) { background: #183d27; }
+.unified-app input[type="radio"], .unified-app input[type="checkbox"] { accent-color: var(--lab-green); }
+.unified-app .hint { font-size: 11px; line-height: 1.8; color: var(--lab-muted); }
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.lab-header { max-width: 1120px; padding: 22px 28px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--lab-line); }
+.lab-brand { display: flex; align-items: center; gap: 11px; color: inherit; text-decoration: none; }
+.lab-mark { display: grid; place-items: center; width: 39px; height: 43px; }
+.lab-mark svg { width: 32px; height: 32px; fill: none; stroke: var(--lab-green); stroke-width: 1.5; stroke-linejoin: round; }
+.lab-mark svg path:first-child { fill: #e0e7d7; }
+.lab-brand strong { font-size: 19px; font-weight: 650; letter-spacing: .08em; }
+.lab-brand small { display: block; color: var(--lab-muted); margin-top: 4px; font: 9px ui-monospace, SFMono-Regular, monospace; letter-spacing: .16em; }
+.lab-release { display: flex; align-items: center; gap: 16px; font-size: 10px; }
+.lab-release a { color: var(--lab-muted); text-decoration: none; }
+.lab-beta { border: 1px solid #c9d1bf; padding: 5px 9px; border-radius: 5px; color: #576a48; font: 10px ui-monospace, SFMono-Regular, monospace; letter-spacing: .08em; }
+.lab-workflow { width: min(100% - 48px, 960px); margin: 0 auto; padding-bottom: 44px; }
+.lab-intro { padding: 44px 0 32px; }
+.lab-kicker { font: 10px ui-monospace, SFMono-Regular, monospace; color: var(--lab-clay); letter-spacing: .14em; margin: 0 0 14px; }
+.lab-intro h1 { font-size: clamp(27px, 4vw, 38px); letter-spacing: -.035em; font-weight: 600; line-height: 1.45; }
+.lab-intro > p:not(.lab-kicker) { font-size: 13px; line-height: 1.9; color: var(--lab-muted); margin: 13px 0 0; }
+.workflow-path { display: flex; align-items: center; gap: 22px; padding: 0; margin: 25px 0 0; list-style: none; font-size: 11px; color: #65715e; }
+.workflow-path li { display: flex; align-items: center; gap: 8px; }
+.workflow-path li + li::before { content: ''; width: 25px; height: 1px; background: #ced5c5; margin-right: 12px; }
+.workflow-path span { color: var(--lab-clay); font: 10px ui-monospace, SFMono-Regular, monospace; }
+.workflow-card { border: 1px solid var(--lab-line); background: var(--lab-card); border-radius: 16px; overflow: hidden; box-shadow: 0 2px 3px #2b392002; }
+.step-heading { display: flex; gap: 13px; align-items: flex-start; }
+.step-number { flex-shrink: 0; font: 11px ui-monospace, SFMono-Regular, monospace; letter-spacing: .02em; line-height: 28px; color: var(--lab-clay); }
+.step-heading h2 { font-size: 18px; font-weight: 600; letter-spacing: -.025em; margin: 0; line-height: 1.5; }
+.step-heading p { margin: 5px 0 0; font-size: 11px; color: var(--lab-muted); line-height: 1.8; }
+.input-card { padding: 25px 28px 0; margin-bottom: 22px; }
+.input-row { display: flex; gap: 21px; align-items: center; padding: 22px 0; }
+.source-preview-wrap { position: relative; width: 140px; height: 102px; flex-shrink: 0; border: 1px solid #d5dbcd; background: #e9ede3; border-radius: 9px; overflow: hidden; }
+.source-preview { display: block; width: 100%; height: 100%; object-fit: contain; }
+.preview-tag { position: absolute; bottom: 5px; left: 6px; color: #3e5137; background: #f7f8f0dc; border-radius: 3px; padding: 3px 5px; font: 8px ui-monospace, SFMono-Regular, monospace; letter-spacing: .08em; }
+.input-actions { min-width: 0; flex: 1; }
+.input-summary { margin: 0 0 10px; font-size: 12px; font-weight: 500; overflow-wrap: anywhere; line-height: 1.7; }
+.input-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.input-buttons button { display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 142px; background: #f7f8f1; border-color: #c9d4c0; }
+.input-buttons svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
+.input-extras { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--lab-line); }
+.compact-details { min-width: 0; padding: 15px 0; }
+.compact-details + .compact-details { border-left: 1px solid var(--lab-line); padding-left: 22px; margin-left: 22px; }
+.compact-details > summary { color: #536348; font-size: 11px; font-weight: 500; min-height: 22px; }
+.compact-details[open] > summary { margin-bottom: 15px; }
+.unified-app .sample-label { font-size: 10px; color: var(--lab-muted); margin: 10px 0 8px; }
+.unified-app .samples { gap: 7px; }
+.unified-app .sample { min-height: 41px; padding: 7px 6px; font-size: 11px; }
+.legacy-samples { margin-top: 14px; }
+.legacy-samples summary { font-size: 10px; font-weight: 400; color: var(--lab-muted); }
+.calibration-fields .field { font-size: 11px; }
+.calibration-fields .row .field { flex: 1; }
+.print-links { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; margin: 12px 0; font-size: 11px; }
+.print-links button { min-height: 36px; padding: 7px 10px; font-size: 10px; }
+.analysis-setup { padding: 25px 28px 23px; }
+.method-picker { border: 0; padding: 0; margin: 22px 0 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; min-width: 0; }
+.method-card { display: flex; align-items: flex-start; gap: 11px; min-width: 0; padding: 20px 18px 18px; border: 1px solid #d4dacf; border-radius: 11px; background: #fffefa; cursor: pointer; transition: border-color 140ms ease, background-color 140ms ease; }
+.method-card:has(input:checked) { border-color: #6c8660; background: #f0f5e9; box-shadow: inset 0 0 0 1px #6c8660; }
+.method-card:has(input:focus-visible) { outline: 3px solid #c99568; outline-offset: 3px; }
+.method-card:has(input:disabled) { cursor: not-allowed; opacity: .65; }
+.method-card input[type="radio"] { width: 16px; height: 16px; margin: 3px 0 0; flex-shrink: 0; }
+.method-content { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.method-title { font-size: 16px; font-weight: 600; letter-spacing: -.02em; line-height: 1.5; }
+.method-description { font-size: 11px; line-height: 1.8; color: #63705d; margin: 8px 0 16px; }
+.method-tech { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font: 10px ui-monospace, SFMono-Regular, monospace; color: #5b6d50; margin-top: auto; }
+.method-tech > span { font-size: 10px; font-family: inherit; padding-left: 10px; border-left: 1px solid #d7decf; line-height: 1.5; }
+.review-option { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 14px 2px 0; }
+.review-toggle { display: flex; align-items: flex-start; gap: 9px; cursor: pointer; }
+.review-toggle input { flex-shrink: 0; margin: 3px 0 0; }
+.review-toggle > span { display: flex; flex-wrap: wrap; gap: 2px 10px; line-height: 1.8; }
+.review-toggle strong { font-size: 11px; font-weight: 500; color: #59684f; }
+.review-toggle > span > span { font-size: 10px; color: var(--lab-muted); }
+.review-limit { display: flex; align-items: center; gap: 8px; font-size: 10px; color: #697364; flex-shrink: 0; }
+.unified-app .review-limit select { min-height: 34px; width: 62px; font-size: 11px; padding: 6px 8px; }
+.analysis-start { margin-top: 23px; padding-top: 22px; border-top: 1px solid var(--lab-line); }
+.analysis-action-row { display: flex; align-items: center; gap: 12px; }
+.unified-app .analyze-button { display: flex; align-items: center; justify-content: space-between; gap: 56px; min-width: 226px; min-height: 54px; padding: 15px 22px; border-radius: 9px; font-size: 15px; letter-spacing: .03em; }
+.analyze-button > span { font-size: 20px; font-weight: 400; line-height: 1; }
+.key-action { display: flex; align-items: flex-start; flex-direction: column; gap: 2px; margin-left: auto; }
+#analysisKeyStatus { font-size: 10px; line-height: 1.7; color: var(--lab-muted); overflow-wrap: anywhere; }
+.unified-app .text-button { padding: 2px 0; min-height: 28px; font-size: 11px; border: 0; background: none; border-radius: 0; color: #47613e; text-decoration: underline; text-underline-offset: 4px; }
+.unified-app .text-button:hover:not(:disabled) { background: none; color: #223c1b; }
+.analysis-disclosure { font-size: 11px; line-height: 1.85; color: #64735a; margin: 12px 0 0; max-width: 78em; }
+.analysis-disclosure:empty { display: none; }
+.unified-app .analysis-cancel { flex-shrink: 0; color: #805540; background: #f8f1e8; border-color: #e4d5c3; }
+.api-settings { margin-top: 18px; border: 1px solid var(--lab-line); border-radius: 10px; background: #f6f7f0; padding: 0 16px; }
+.api-settings:not([open]) { display: none; }
+.api-settings > summary { padding: 13px 0; font-size: 11px; color: #4f6446; }
+.api-settings[open] { padding-bottom: 16px; }
+.api-fields { display: grid; grid-template-columns: 1fr 1.25fr; gap: 16px; }
+.api-fields .field { margin-bottom: 0; font-size: 11px; }
+.provider-target, .provider-note { overflow-wrap: anywhere; }
+.key-settings-actions { display: flex; align-items: flex-end; gap: 20px; margin-top: 14px; }
+.key-settings-actions .grid-field { min-width: 120px; margin-bottom: 0; margin-left: auto; }
+.key-settings-actions #clearKey { font-size: 10px; }
+.key-help { margin-top: 16px; }
+.key-help summary { font-size: 11px; color: var(--lab-muted); }
+.analysis-failure { margin-top: 18px; padding: 17px 18px; background: #fbf0e6; border: 1px solid #e5cbb7; border-radius: 10px; }
+.analysis-failure strong { font-size: 13px; color: #7d492e; }
+.analysis-failure p { color: #85634d; font-size: 12px; line-height: 1.8; margin: 8px 0 0; overflow-wrap: anywhere; }
+.recovery-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.recovery-actions button { background: #fffaf4; border-color: #dfc9b4; }
+.unified-app #journey-root { margin: 0; border: 0; border-top: 1px solid var(--lab-line); border-radius: 0; box-shadow: none; background: var(--lab-card); scroll-margin-top: 16px; }
+.unified-app .journey-heading { display: none; }
+.unified-app #journeyRun, .unified-app #journeyCancel { display: none !important; }
+.unified-app .journey-scene { height: clamp(340px, 48vw, 530px); min-height: 340px; background-color: #283127; background-image: radial-gradient(ellipse at 50% 45%, #414d3c 0%, #2c3628 58%, #202a1f 100%); }
+.unified-app .journey-caption { padding: 21px 28px 15px; }
+.unified-app .journey-stage-title { font-size: 17px; }
+.unified-app .journey-stage-description { font-size: 11px; }
+.unified-app .journey-steps { padding: 0 22px 15px; gap: 5px; }
+.unified-app .journey-steps button { min-height: 42px; border-radius: 5px 5px 0 0; font-size: 11px; }
+.unified-app .journey-bottom { padding: 0 24px 19px; }
+.unified-app .journey-controls button { min-height: 38px; font-size: 11px; padding: 7px 12px; }
+.unified-app .journey-process { padding: 12px 28px; background: #eef2e8; }
+.unified-app .workflow-status { border: 0; background: transparent; color: var(--lab-muted); padding: 0 3px; min-height: 0; margin: 12px 0 26px; font-size: 11px; }
+.unified-app .workflow-status.error { color: #955536; }
+.result-card { padding: 25px 28px 0; }
+.result-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.result-top .tabs { min-width: 255px; flex-shrink: 0; }
+.result-top .tabs button { min-height: 37px; padding: 8px; font-size: 10px; }
+.result-metrics { display: grid; grid-template-columns: 1.55fr 1fr 1fr 1.1fr; gap: 22px; margin: 25px 0 22px; }
+.area-metric > span, .result-metrics .submetric > span { font-size: 11px; color: var(--lab-muted); }
+.area-metric > span > small { margin-left: 6px; font-size: 9px; color: #87907f; }
+.unified-app .summaryvalue { font: 400 33px ui-monospace, SFMono-Regular, monospace; letter-spacing: -.05em; color: var(--lab-green); margin: 9px 0 0; overflow-wrap: anywhere; }
+.unified-app .summaryvalue small { font-size: 12px; letter-spacing: 0; }
+.result-metrics .submetric { display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; border-top: 0; border-left: 1px solid var(--lab-line); padding: 0 0 0 22px; gap: 13px; min-width: 0; }
+.result-metrics .submetric b { font: 400 22px ui-monospace, SFMono-Regular, monospace; overflow-wrap: anywhere; }
+.result-warnings:empty { display: none; }
+.result-warnings { margin-bottom: 20px; }
+.unified-app .restore-analysis { margin: 0 0 18px; font-size: 11px; min-height: 38px; background: #f7f5ed; }
+.measurement-calibration { border-top: 1px solid var(--lab-line); padding: 17px 0; }
+.measurement-calibration > summary { font-size: 11px; font-weight: 500; color: #627256; }
+.measurement-calibration > summary > span { margin-left: 8px; color: #929a88; font-size: 9px; font-weight: 400; }
+.measurement-calibration-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 17px; }
+.measurement-calibration-fields .field { margin: 0; }
+.calibration-assumptions { margin: 16px 0; max-width: 60em; }
+.calibration-actions { display: flex; gap: 8px; }
+.calibration-caution { color: #8b6b4e; font-size: 10px; line-height: 1.8; margin: 12px 0 0; }
+.result-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; border-top: 1px solid var(--lab-line); padding: 22px 0 24px; }
+.result-detail-grid h3 { display: flex; align-items: center; gap: 12px; font-size: 12px; font-weight: 550; margin: 0 0 13px; }
+.result-detail-grid h3 > span { color: #8a9480; font: 9px ui-monospace, SFMono-Regular, monospace; }
+.result-export { border-left: 1px solid var(--lab-line); padding-left: 28px; }
+.export-buttons { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.export-buttons button { padding: 9px 10px; font: 11px ui-monospace, SFMono-Regular, monospace; }
+.result-export .hint { max-width: 36em; font-size: 10px; }
+.result-edges .edge-list { max-height: 185px; scrollbar-width: thin; padding-right: 6px; }
+.result-edges .edge-list > .hint { margin-top: 0; }
+.unified-app .editor-panel { margin: 0 -28px; border-radius: 0; border-top: 1px solid var(--lab-line); background: #f6f7ef; }
+.unified-app .editor-disclosure { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 19px 28px; }
+.unified-app .editor-disclosure > div { display: flex; flex-direction: column; gap: 5px; }
+.unified-app .editor-disclosure b { font-size: 12px; font-weight: 550; }
+.unified-app .editor-disclosure span { color: var(--lab-muted); font-size: 10px; line-height: 1.7; }
+.unified-app .editor-disclosure button { flex-shrink: 0; min-height: 39px; font-size: 11px; }
+.unified-app .canvaswrap { min-height: 360px; }
+.unified-app .editbar { padding: 14px 20px; }
+.unified-app .editbar button { min-height: 38px; font-size: 11px; }
+.editing-hint { padding: 0 22px 20px; }
+.advanced-diagnostics { margin-top: 24px; border-top: 1px solid #d4dbcb; border-bottom: 1px solid #d4dbcb; }
+.advanced-diagnostics > summary { padding: 20px 3px; color: #65715b; font-size: 11px; font-weight: 500; }
+.advanced-diagnostics > summary .details-caption { float: right; font-size: 10px; color: #8a9381; font-weight: 400; }
+.advanced-diagnostics[open] > summary { margin-bottom: 0; }
+.diagnostics-content { padding-bottom: 22px; }
+.diagnostic-controls { padding: 22px; margin-bottom: 18px; background: #fafbf5; border: 1px solid var(--lab-line); border-radius: 11px; }
+.diagnostic-controls h3, .compare h3 { margin: 0; font-size: 13px; font-weight: 550; }
+.diagnostic-buttons { display: flex; gap: 8px; flex-wrap: wrap; margin: 15px 0 20px; }
+.diagnostic-buttons button { flex: 1; font-size: 11px; }
+.mask-settings { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; }
+.mask-settings .field { margin: 0; }
+.unified-app .tune-panel { box-shadow: none; padding: 22px; border-color: var(--lab-line); }
+.unified-app .tune-head h2 { font-size: 18px; }
+.unified-app .tune-head p, .unified-app .tune-status { font-size: 11px; }
+
+.diagnostic-details { padding: 18px 2px 0; }
+.diagnostic-details > summary { font-size: 11px; color: #63735a; }
+.unified-app .debug-panel { margin-top: 12px; }
+.unified-app .compare { padding: 18px; border: 1px solid var(--lab-line); background: #fafbf5; border-radius: 11px; }
+.compare h3 { margin-bottom: 14px; }
+.lab-footer { max-width: 1064px; margin: 0 auto; padding: 23px 24px 32px; display: flex; align-items: flex-start; gap: 40px; border-top: 1px solid var(--lab-line); color: #808777; font-size: 10px; line-height: 1.9; }
+.lab-footer > div:first-child { max-width: 690px; }
+.lab-footer p { margin: 0; }
+.lab-footer details { margin-top: 7px; }
+.lab-footer details summary { font-size: 10px; font-weight: 400; color: #7e8873; }
+.lab-footer details p { margin-top: 10px; }
+.footer-meta { display: flex; flex-direction: column; flex-shrink: 0; gap: 8px; margin-left: auto; font: 9px ui-monospace, SFMono-Regular, monospace; line-height: 1.8; text-align: right; }
+.footer-meta a { font-size: 10px; color: #68775b; }
+
+@media (max-width: 760px) {
+  .lab-header { padding: 18px 22px; }
+  .lab-workflow { width: calc(100% - 32px); }
+  .lab-intro { padding: 32px 5px 26px; }
+  .input-card { padding: 22px 22px 0; }
+  .analysis-setup { padding: 22px; }
+  .input-row { gap: 17px; }
+  .source-preview-wrap { width: 115px; height: 95px; }
+  .input-buttons button { min-width: 0; padding: 9px 11px; }
+  .method-card { padding: 17px 14px; gap: 8px; }
+  .method-title { font-size: 14px; }
+  .method-description { font-size: 10px; margin-bottom: 12px; }
+  .method-tech { font-size: 9px; gap: 6px; }
+  .method-tech > span { padding-left: 0; border-left: 0; }
+  .review-toggle > span { flex-direction: column; }
+  .review-option { gap: 14px; }
+  .result-card { padding: 22px 22px 0; }
+  .result-top { flex-direction: column; gap: 16px; }
+  .result-top .tabs { min-width: 0; width: 100%; max-width: 340px; }
+  .result-metrics { gap: 14px; }
+  .result-metrics .submetric { padding-left: 14px; }
+  .result-metrics .submetric b { font-size: 18px; }
+  .unified-app .summaryvalue { font-size: 27px; }
+  .unified-app .editor-panel { margin: 0 -22px; }
+  .unified-app .editor-disclosure { padding: 18px 22px; }
+  .unified-app .journey-caption { padding: 19px 22px 13px; }
+  .unified-app .journey-process { padding: 12px 22px; }
+  .lab-footer { margin: 0 16px; padding: 22px 6px 28px; flex-direction: column; gap: 20px; }
+  .footer-meta { flex-direction: row; gap: 20px; margin-left: 0; text-align: left; }
+}
+@media (max-width: 520px) {
+  .lab-header { padding: 15px 17px; }
+  .lab-brand { gap: 8px; }
+  .lab-mark { width: 31px; }
+  .lab-mark svg { width: 29px; height: 29px; }
+  .lab-brand strong { font-size: 17px; }
+  .lab-brand small { font-size: 8px; }
+  .lab-release { gap: 10px; font-size: 9px; }
+  .lab-beta { font-size: 9px; padding: 4px 6px; }
+  .lab-workflow { width: calc(100% - 24px); padding-bottom: 30px; }
+  .lab-intro { padding: 29px 6px 25px; }
+  .lab-kicker { font-size: 9px; margin-bottom: 12px; }
+  .lab-intro h1 { font-size: clamp(23px, 6.5vw, 31px); white-space: nowrap; }
+  .lab-intro > p:not(.lab-kicker) { font-size: 11px; max-width: 30em; margin-top: 12px; }
+  .workflow-path { gap: 12px; font-size: 10px; margin-top: 20px; }
+  .workflow-path li { gap: 5px; }
+  .workflow-path li + li::before { width: 12px; margin-right: 3px; }
+  .workflow-path span { font-size: 9px; }
+  .workflow-card { border-radius: 12px; }
+  .input-card { padding: 20px 17px 0; margin-bottom: 16px; }
+  .step-heading { gap: 10px; }
+  .step-heading h2 { font-size: 17px; }
+  .step-heading p { font-size: 10px; }
+  .step-number { font-size: 10px; line-height: 26px; }
+  .input-row { gap: 12px; padding: 18px 0; align-items: flex-start; }
+  .source-preview-wrap { width: 81px; height: 81px; border-radius: 7px; }
+  .input-summary { font-size: 11px; line-height: 1.7; margin-bottom: 8px; }
+  .input-buttons { gap: 6px; }
+  .input-buttons button { min-height: 42px; font-size: 10px; padding: 8px 9px; gap: 5px; flex: 1; white-space: nowrap; }
+  .input-buttons svg { width: 14px; height: 14px; }
+  .input-actions > .hint { font-size: 9px; line-height: 1.8; }
+  .input-extras { grid-template-columns: 1fr; }
+  .compact-details { padding: 13px 0; }
+  .compact-details + .compact-details { margin-left: 0; padding-left: 0; border-left: 0; border-top: 1px solid var(--lab-line); }
+  .compact-details > summary { min-height: 20px; }
+  .analysis-setup { padding: 20px 17px 18px; }
+  .method-picker { gap: 10px; margin-top: 18px; grid-template-columns: 1fr; }
+  .method-card { padding: 16px; gap: 11px; }
+  .method-card input[type="radio"] { margin-top: 2px; }
+  .method-title { font-size: 14px; }
+  .method-description { font-size: 11px; margin: 5px 0 10px; }
+  .method-tech { font-size: 10px; gap: 10px; }
+  .method-tech > span { padding-left: 10px; border-left: 1px solid #d7decf; }
+  .review-option { align-items: flex-start; gap: 10px; padding-top: 14px; }
+  .review-toggle { gap: 7px; }
+  .review-toggle > span > span { font-size: 9px; }
+  .review-limit { flex-direction: column; align-items: flex-start; gap: 4px; font-size: 8px; }
+  .unified-app .review-limit select { min-height: 34px; width: 60px; }
+  .analysis-start { margin-top: 18px; padding-top: 18px; }
+  .analysis-action-row { flex-wrap: wrap; gap: 10px; }
+  .unified-app .analyze-button { width: 100%; min-width: 0; min-height: 53px; padding: 14px 20px; }
+  .unified-app .analysis-cancel { width: 100%; min-height: 44px; }
+  .key-action { margin-left: 0; width: 100%; align-items: center; flex-direction: row; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; }
+  #analysisKeyStatus { font-size: 9px; }
+  .unified-app .text-button { font-size: 10px; }
+  .analysis-disclosure { font-size: 10px; margin-top: 8px; }
+  .api-settings { margin-top: 14px; padding: 0 13px; }
+  .api-fields { grid-template-columns: 1fr; gap: 13px; }
+  .key-settings-actions { flex-direction: column; align-items: stretch; gap: 14px; }
+  .key-settings-actions .grid-field { margin-left: 0; }
+  .key-settings-actions #clearKey { font-size: 10px; }
+  .analysis-failure { padding: 15px; }
+  .analysis-failure p { font-size: 11px; }
+  .unified-app .journey-scene { height: 365px; min-height: 320px; }
+  .unified-app .journey-caption { padding: 18px 17px 12px; }
+  .unified-app .journey-stage-title { font-size: 16px; }
+  .unified-app .journey-stage-description { font-size: 10px; }
+  .unified-app .journey-playback { font-size: 9px; }
+  .unified-app .journey-steps { padding: 0 11px 12px; gap: 2px; }
+  .unified-app .journey-steps button { padding: 8px 6px; font-size: 9px; min-height: 39px; }
+  .unified-app .journey-bottom { padding: 0 14px 14px; gap: 8px; }
+  .unified-app .journey-controls button { padding: 8px 7px; min-height: 39px; font-size: 10px; }
+  .unified-app .journey-motion-note { font-size: 9px; }
+  .unified-app .journey-process { padding: 11px 17px; font-size: 10px; }
+  .unified-app .workflow-status { margin: 10px 3px 20px; font-size: 10px; }
+  .result-card { padding: 20px 17px 0; }
+  .result-top .tabs { max-width: none; }
+  .result-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 16px; margin: 22px 0; }
+  .area-metric > span, .result-metrics .submetric > span { font-size: 10px; }
+  .area-metric > span > small { font-size: 8px; margin-left: 3px; }
+  .unified-app .summaryvalue { font-size: 27px; }
+  .result-metrics .submetric { padding-left: 16px; gap: 12px; }
+  .result-metrics .submetric:nth-child(3) { padding-left: 0; border-left: 0; }
+  .result-metrics .submetric b { font-size: 22px; }
+  .result-detail-grid { grid-template-columns: 1fr; gap: 20px; padding: 20px 0; }
+  .result-detail-grid h3 { font-size: 11px; }
+  .result-export { padding: 20px 0 0; border-left: 0; border-top: 1px solid var(--lab-line); }
+  .measurement-calibration-fields { grid-template-columns: 1fr; gap: 13px; }
+  .export-buttons button { min-height: 43px; }
+  .unified-app .editor-panel { margin: 0 -17px; }
+  .unified-app .editor-disclosure { flex-direction: column; align-items: flex-start; gap: 12px; padding: 17px; }
+  .unified-app .editor-disclosure button { width: 100%; }
+  .unified-app .canvashead { flex-wrap: wrap; gap: 12px; }
+  .unified-app .canvaswrap { min-height: 260px; }
+  .unified-app .canvasfooter { flex-wrap: wrap; }
+  .unified-app .editbar { padding: 12px; }
+  .editing-hint { padding: 0 14px 17px; font-size: 10px; }
+  .advanced-diagnostics { margin-top: 20px; }
+  .advanced-diagnostics > summary { padding: 17px 3px; font-size: 11px; }
+  .advanced-diagnostics > summary .details-caption { font-size: 8px; padding-top: 3px; }
+  .diagnostic-controls { padding: 17px; }
+  .diagnostic-buttons { flex-direction: column; }
+  .mask-settings { grid-template-columns: 1fr; gap: 15px; }
+  .unified-app .tune-panel { padding: 17px; }
+  .unified-app .tune-head h2 { font-size: 17px; }
+  .unified-app .benchgrid { grid-template-columns: 1fr; gap: 10px; }
+  .footer-meta { flex-wrap: wrap; gap: 8px 20px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .unified-app *, .unified-app *::before, .unified-app *::after { transition: none !important; scroll-behavior: auto !important; }
+  .unified-app .progressbar { animation: none; }
+}
+
+.unified-app .close-key-settings { margin-top: 18px; background: #eaf0e2; border-color: #c5d3b9; font-size: 11px; }
+
+.analysis-live-progress { font-size:12px; line-height:1.6; color:#25452d; background:#eef2e8; padding:10px 12px; border-radius:8px; margin:10px 0 0; }

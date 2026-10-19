@@ -1,12 +1,13 @@
 import { test, expect, type Page } from "@playwright/test";
 import { resolve } from "node:path";
+import { sourceReady, openLegacyDetails, startLegacyCalibration } from "./legacy-ui";
 
 const routes = [
-  { button: "upload", input: "file", name: "写真ライブラリ・ファイルから選ぶ" },
+  { button: "upload", input: "file", name: "写真を選ぶ" },
   { button: "camera", input: "cameraFile", name: "カメラで撮影" },
 ];
 const ready = async (page: Page) => {
-  await expect(page.locator("#status")).toContainText("平面補正できました", { timeout: 30000 });
+  await sourceReady(page);
   await expect(page.locator("#upload")).toBeEnabled();
 };
 const controlsEnabled = async (page: Page) => {
@@ -44,7 +45,8 @@ test("library and camera have distinct accessible controls and picker attributes
     await ready(page);
     await expect(page.locator("#sourceLabel")).toHaveText(sourceBefore!);
     await expect(page.locator("#markerLabel")).toHaveText(markersBefore!);
-    await expect(page.locator("#runB")).toBeEnabled();
+    await expect(page.locator("#runB")).toBeDisabled();
+    await expect(page.locator("#analyze")).toBeEnabled();
   }
   const width = await page.evaluate(() => ({
     scroll: document.documentElement.scrollWidth,
@@ -61,17 +63,22 @@ for (const route of routes) {
       if (/^https?:/.test(request.url()) && new URL(request.url()).origin !== origin)
         remote.push(request.url());
     });
+    await openLegacyDetails(page);
     await page.locator("#debugStep").check();
     const pending = page.waitForEvent("filechooser");
     await page.locator(`#${route.button}`).click();
     const chooser = await pending;
     await chooser.setFiles(resolve("public/samples/l-shape.png"));
+    await ready(page);
+    await expect(page.locator("#runB")).toBeDisabled();
+    await expect(page.locator("#debugNext")).toBeDisabled();
+    await startLegacyCalibration(page);
     await expect(page.locator("#debugActivity")).toContainText("入力写真で停止中");
     for (const selector of ["#upload", "#camera", "#file", "#cameraFile"])
       await expect(page.locator(selector)).toBeDisabled();
     await expect(page.locator(`#${route.input}`)).toHaveValue("");
     await page.locator("#debugContinue").click();
-    await ready(page);
+    await expect(page.locator("#status")).toContainText("平面補正できました");
     await controlsEnabled(page);
     await expect(page.locator("#sourceLabel")).toHaveText("l-shape.png");
     await expect(page.locator("#markerLabel")).toContainText("0 · 1 · 2 · 3");
@@ -79,6 +86,7 @@ for (const route of routes) {
     // A second selection of the identical file must run again.
     await page.locator("#debugStep").check();
     await page.locator(`#${route.input}`).setInputFiles(resolve("public/samples/l-shape.png"));
+    await startLegacyCalibration(page);
     await expect(page.locator("#debugActivity")).toContainText("入力写真で停止中");
     await page.locator("#debugCancel").click();
     await expect(page.locator("#status")).toContainText("中止");
@@ -86,9 +94,10 @@ for (const route of routes) {
     await expect(page.locator("#runB")).toBeDisabled();
     // Cancellation must also allow the identical file to be selected again.
     await page.locator(`#${route.input}`).setInputFiles(resolve("public/samples/l-shape.png"));
+    await startLegacyCalibration(page);
     await expect(page.locator("#debugActivity")).toContainText("入力写真で停止中");
     await page.locator("#debugContinue").click();
-    await ready(page);
+    await expect(page.locator("#status")).toContainText("平面補正できました");
     // This observes cross-origin requests; it is not a claim about every network operation.
     expect(remote).toEqual([]);
   });
@@ -179,6 +188,8 @@ test("real JPEG EXIF orientations survive the shared decode-to-canvas pipeline e
       buffer: withExifOrientation(jpeg, orientation),
     });
     await expect(page.locator("#sourceLabel")).toHaveText(`exif-${orientation}.jpg`);
+    // Import only decodes; explicitly request diagnostics for these markerless images.
+    await startLegacyCalibration(page);
     // Featureless color quadrants intentionally have no ArUco board.
     await expect(page.locator("#status")).toContainText("見つかりません");
     await controlsEnabled(page);

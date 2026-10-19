@@ -1,11 +1,14 @@
 import "./style.css";
 import "./auto-tune.css";
+import "./unified.css";
+import { createAppShell } from "./app-shell";
 import { APP_BUILD, APP_VERSION } from "./build-info";
 import { tuningPanelHtml, candidateOverlay, reviewPhotograph } from "./tuning-ui";
 import { mergeSearchResults } from "./tuning-state";
 import { searchMaskCandidates, candidateSearchDiagnostics, type Candidate, type SearchResult } from "./auto-tune";
 import { reviewCandidates, runReviewLoop, type ReviewCandidate, type ReviewAttempt, type CandidateReview } from "./candidate-review";
 import { MeasurementJourney } from "./journey";
+import { createKnownEdgeCalibration, transformMeasurementGeometry, calibrationContextMatches, measurementGeometrySignature, type KnownEdgeCalibration } from "./measurement-calibration";
 import {
   type Geometry,
   type Point,
@@ -13,6 +16,7 @@ import {
   createSvg,
   createDxf,
   createJson,
+  svgExportBounds,
   validateGeometry,
   cloneGeometry,
   nearAxisSnap,
@@ -57,7 +61,7 @@ type Mode = "A" | "B" | "C";
 const $ = <T extends HTMLElement = HTMLElement>(id: string) =>
   document.getElementById(id) as T;
 const base = import.meta.env.BASE_URL;
-const html = `<div id="progress" class="progressbar hidden"></div><header class="top"><div class="brand"><div class="logo">⌑</div><div><strong>端材ラボ</strong><small>SCRAP VECTOR LAB · BETA / <span id="appVersion">${APP_VERSION}</span></small></div></div><div class="topnote">写真から、ものづくりの次の一枚へ。</div><span class="pill">BETA · 自動調整</span></header><p class="beta-notice">自動調整ベータ · 本番とは別の配信です。<a href="https://check5004.github.io/scrap-vector-lab/" target="_blank" rel="noopener">通常版を開く ↗</a></p><section class="intro"><div><div class="eyebrow">PHOTO → PLANE → VECTOR</div><h1>端材のかたちを、寸法に。</h1><p>4つのマーカーで平面補正。AIで輪郭を抽出し、指先で仕上げる。</p></div><div class="flow"><span><b>01</b>撮影</span><span><b>02</b>AI抽出</span><span><b>03</b>編集・書き出し</span></div></section><main class="layout"><aside class="panel sidebar"><section class="section"><h2 class="sectiontitle">01　写真を用意<span>INPUT</span></h2><input id="file" type="file" accept="image/*" aria-label="写真ライブラリ・ファイルから選ぶ" class="hidden"><input id="cameraFile" type="file" accept="image/*" capture="environment" aria-label="カメラで撮影" class="hidden"><div class="stack"><button id="upload" type="button" class="full primary" aria-controls="file">＋ 写真ライブラリ・ファイルから選ぶ</button><button id="camera" type="button" class="full" aria-controls="cameraFile">カメラで撮影</button></div><p class="hint">ID 0〜3をすべて写してください。<br>写真はMode Bでは端末内だけで処理。</p><p class="sample-label">AI画像で生成した鋼材の質感</p><div class="samples"><button class="sample ai-sample" data-sample="ai-l-shape">AI · L字型</button><button class="sample ai-sample" data-sample="ai-notched">AI · 凹型</button><button class="sample ai-sample" data-sample="ai-trapezoid-hole">AI · 台形＋穴</button></div><p class="sample-origin">AIで生成した鋼材の質感を、寸法が既知の形状・台紙に合成。マーカーは正規のコードです。実物を撮影した写真ではありません。</p><p class="sample-label">従来の合成写真 · 比較用</p><div class="samples"><button class="sample" data-sample="l-shape"><svg viewBox="0 0 30 23"><path d="M2 2H28V10H15V22H2Z"/></svg>L字型</button><button class="sample" data-sample="notched"><svg viewBox="0 0 30 23"><path d="M2 2H10V12H20V2H28V22H2Z"/></svg>凹型</button><button class="sample" data-sample="trapezoid-hole"><svg viewBox="0 0 30 23"><path fill-rule="evenodd" d="M8 2H23L29 22H1ZM20 12a5 5 0 1 0 -10 0a5 5 0 1 0 10 0"/></svg>台形＋穴</button></div></section><section class="section"><h2 class="sectiontitle">02　基準スケール<span>CALIBRATION</span></h2><label class="field">規定の内側角の間隔<select id="preset"><option value="a4">A4用紙 · 250 × 170 mm</option><option value="medium">中型台 · 500 × 500 mm</option><option value="large">大型台 · 1000 × 1000 mm</option><option value="custom">カスタム寸法</option></select></label><div id="custom" class="row hidden"><label class="field">横 mm<input id="width" type="number" value="2000" min="10" max="10000"></label><label class="field">縦 mm<input id="height" type="number" value="1000" min="10" max="10000"></label></div><button id="rectify" class="full">マーカー検出・平面補正</button><p id="scale" class="hint">2500 × 1700 px · 0.100 mm/px</p><div class="row" style="margin-top:12px"><a class="hint" href="${base}print/a4-marker-sheet.svg" download>A4台紙 SVG ↗</a><a class="hint" href="${base}print/a4-marker-sheet.png" download>PNG ↗</a><button id="print" style="padding:5px 8px;min-height:30px;font-size:10px">印刷</button></div><p class="hint">A4横・100% / 実際のサイズで印刷。<br>100 mmの目盛りを定規で実測してください。<br>切り離したマーカーも台紙と同じ向きに配置。</p></section><section class="section advanced"><h2 class="sectiontitle">03　AIでベクター化<span>INFERENCE</span></h2><button id="runB" class="full primary" disabled>B · 端末内AIで輪郭を抽出</button><p class="hint">U²-NetP / ONNX · 実推論 · API費用なし<br>320 × 320のAIマスクをミリ座標へ変換</p><p class="warn">既知の制限: 従来の穴サンプルでは、直径40 mmの穴を見落とします。Cで穴を描いて修正できます。</p><label class="field" style="margin-top:15px">直線化の許容差 ε <b id="epsilonValue">1.0 mm</b><input id="epsilon" type="range" min="0.5" max="10" step="0.001" value="1"></label><details><summary>マスクの閾値を調整</summary><label class="field">前景確率 <b id="thresholdValue">0.50</b><input id="threshold" type="range" min="0.1" max="0.9" step="0.001" value="0.5"></label></details><details style="margin-top:18px"><summary>A · GPT-6 Lunaで輪郭を推論 <span class="badge">外部API</span></summary><label class="field" style="margin-top:12px">API接続先<select id="provider"><option value="openrouter" selected>OpenRouter（OpenRouterのキー）</option><option value="openai">OpenAI直接（OpenAIのキー）</option></select></label><p id="providerTarget" class="provider-target"></p><label class="field"><span id="apiKeyLabel">OpenRouter APIキー（このブラウザに保存）</span><input id="apiKey" type="password" placeholder="sk-or-v1-…" autocomplete="off" spellcheck="false" aria-describedby="keyStorageHelp keyStorageStatus"></label><p id="keyStorageStatus" class="provider-note" role="status" aria-live="polite"></p><p id="keyStorageHelp" class="hint">ベータ専用の保存名を使い、本番の保存キーは読込・移行・削除しません。同じホスト名のため完全なセキュリティ隔離ではありません。入力したキーは接続先ごとに、この端末・ブラウザのlocalStorageへ自動保存され、リロード後も復元されます。共有端末では使わず、利用後は削除してください。暗号化保存ではなく、同じサイト（ホスト名）のページや拡張機能から読まれる可能性があります。別の端末・ブラウザには同期しません。プライベートモードやサイトデータ削除では失われる場合があります。保存だけではAPIに送信しません。</p><p id="keyValidation" class="provider-note" role="status"></p><button id="clearKey" class="full">この接続先の保存キーを削除</button><label class="field" style="margin-top:12px">画像の方眼間隔<select id="gridstep"><option value="10">10 mm</option><option value="25">25 mm</option><option value="50">50 mm</option><option value="100">100 mm</option></select></label><label class="confirm"><input id="consent" type="checkbox"><span id="consentText"></span></label><button id="runA" class="full" disabled>A · GPT-6 Lunaで推論</button><p class="hint">ブラウザでのキー入力は信頼する端末・このPoC限定でご利用ください。本番運用ではサーバー経由を推奨。キーなしでは実行しません。接続先ごとのキーが必要です。接続先変更時は、その接続先の保存キーだけを復元し、送信の確認を解除します。実行時に提供状況を確認。失敗時の代替推論・架空結果はありません。</p></details></section></aside><section class="workspace"><section id="journey-root" class="panel" aria-label="写真から寸法までの連続表示"></section>${tuningPanelHtml}<div class="panel editor-panel"><div class="editor-disclosure"><div><b>編集・比較</b><span>A / B / C · 実寸の確認</span></div><button id="toggleEditor" aria-expanded="false" aria-controls="editorSurface">計測キャンバスを開く</button></div><div id="editorSurface" class="hidden"><div class="canvashead"><div class="legend"><b>MEASUREMENT CANVAS</b><label><input type="checkbox" id="showA" checked><i class="dot a"></i>A</label><label><input type="checkbox" id="showB" checked><i class="dot b"></i>B</label><label><input type="checkbox" id="showC" checked><i class="dot c"></i>C</label></div><select id="view" aria-label="背景表示"><option value="rectified">補正後</option><option value="photo">撮影画像</option><option value="mask">AIマスク</option><option value="grid">方眼</option></select></div><div class="canvaswrap"><svg id="editor" viewBox="0 0 250 170" role="img" aria-label="端材の輪郭と編集可能な頂点"></svg></div><div class="canvasfooter"><span id="sourceLabel">SAMPLE / 合成写真を読み込み中</span><span id="markerLabel">MARKERS —</span></div></div><div class="editbar"><button id="editC" disabled>Cへコピーして編集</button><button id="undo" disabled>↶ 戻す</button><button id="delete" disabled>頂点を削除</button><button id="snap" disabled>直角に整列 ±5°</button><button id="drawHole" disabled>＋ 穴を描く</button><button id="drawOuter">外周を手描き</button><button id="finishDraw" class="hidden">図形を確定</button><button id="cancelDraw" class="hidden">描画を中止</button><span id="selected" class="selectednum"></span></div></div><div id="status" role="status" aria-live="polite" class="status">合成写真を読み込み中…</div><p class="hint"><a href="#debugPanel">マーカー認識・処理途中の画像を見る ↓</a></p><p class="hint">Cモード: ピンをドラッグ、辺をタップして頂点追加。ピンを選んで削除、またはダブルタップ。輪郭が交差する編集は確定できません。</p><section id="debugPanel" class="panel debug-panel"></section><div class="panel compare"><h2>検証ベンチ <span class="hint">/ 合成写真の既知寸法との比較</span></h2><div id="benchmark" class="benchgrid"></div><p class="hint">正解は評価だけに使用し、AIの入力・予測には使用しません。曲線は多角形近似。誤差はこの合成画像での結果で、実物の精度保証ではありません。</p></div></section><aside class="panel results"><section class="section"><h2 class="sectiontitle">計測結果<span>MM UNITS</span></h2><div class="tabs"><button data-mode="A">A · LLM</button><button data-mode="B" class="active">B · AI</button><button data-mode="C">C · 編集</button></div><p class="hint" style="margin-top:18px">正味面積（外周 − 穴）</p><div class="summaryvalue"><span id="area">—</span><small>mm²</small></div><div class="submetric"><span>外周の頂点</span><b id="vertices">—</b></div><div class="submetric"><span>検出した穴</span><b id="holes">—</b></div><div class="submetric"><span>外周長</span><b id="perimeter">— mm</b></div><div id="warnings"></div></section><section class="section"><h2 class="sectiontitle">各辺の寸法<span>LENGTH / ANGLE</span></h2><div id="edges" class="edge-list"><p class="hint">AI抽出後に表示されます。</p></div></section><section class="section exports"><h2 class="sectiontitle">実寸で書き出す<span>EXPORT 1:1</span></h2><div class="stack"><button id="exportSvg" disabled>SVG　↗</button><button id="exportDxf" disabled>DXF　↗</button><button id="exportJson" disabled>JSON　↗</button></div><p class="hint">現在選択中のモードを出力。<br>SVG: mm + 寸法レイヤー<br>DXF: mm / 閉じたLWPOLYLINE</p><a class="hint" href="https://github.com/check5004/scrap-vector-lab/tree/${APP_BUILD.source_commit === 'local' ? 'beta/auto-threshold-20261019' : APP_BUILD.source_commit}" target="_blank" rel="noopener">ソース・検証手順 ↗</a></section></aside></main><footer class="footer"><p>検証用ツールです。0.1 mm/pxは画像の刻み幅であり、計測精度ではありません。厚み・反り・カメラのレンズ歪み・斜め撮影・印刷倍率で誤差が生じます。マーカーと測定面を同じ平面にし、重要な寸法は必ず実測してください。AIは穴や細部を見落とすことがあります。</p><span>DICT_4X4_50<br>0 TL · 1 TR · 2 BR · 3 BL</span></footer>`;
+const html = createAppShell(base, APP_VERSION, APP_BUILD, tuningPanelHtml);
 $("app").innerHTML = html;
 let board: Board = { ...PRESETS.a4 },
   source: HTMLCanvasElement | undefined,
@@ -78,6 +82,12 @@ let active: Mode = "B",
 const geometries: Partial<Record<Mode, Geometry>> = {},
   provenance: Partial<Record<Mode, Record<string, unknown>>> = {},
   warnings: Partial<Record<Mode, string[]>> = {};
+const calibrations: Partial<Record<Mode,KnownEdgeCalibration>> = {};
+let failureNeedsKey = false;
+let calibrationUiSignature = "";
+let sourceEpoch = 0;
+let unifiedRunActive = false;
+let lastAnalysis: AnalysisSnapshot | undefined;
 let tuneEpoch = 0;
 let tuneResult: SearchResult | undefined;
 let tuneSelectedId: string | undefined;
@@ -96,12 +106,7 @@ const editor = $<SVGSVGElement & HTMLElement>("editor");
 let journeyToken: number | undefined;
 let journeyMarkerReport: MarkerDetectionReport | undefined;
 const journey = new MeasurementJourney($("journey-root"), {
-  runAll: () => void guarded(async () => {
-    focusJourney();
-    readCustomBoard();
-    await calibrate();
-    await runModeB();
-  }),
+  runAll: () => void analyzeSelected(),
   onEdit: () => revealEditor(),
   onCancel: () => { pipelineAbort?.abort(); activeRequest?.abort(); },
 });
@@ -109,7 +114,7 @@ function focusJourney() {
   $("editorSurface").classList.add("hidden");
   $("toggleEditor").setAttribute("aria-expanded", "false");
   $("toggleEditor").textContent = "計測キャンバスを開く";
-  $("journey-root").scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" });
+  document.querySelector<HTMLElement>(".analysis-start")!.scrollIntoView({ behavior: "instant", block: "start" });
 }
 function revealEditor(message = "編集・比較のため説明再生を停止しました。") {
   journey.stopForEdit(message);
@@ -124,6 +129,7 @@ $("toggleEditor").onclick = () => {
     $("editorSurface").classList.add("hidden");
     $("toggleEditor").setAttribute("aria-expanded", "false");
     $("toggleEditor").textContent = "計測キャンバスを開く";
+    showMethodResult(selectedMethod());
   }
 };
 const debug = new DebugPanel(
@@ -141,9 +147,171 @@ const debug = new DebugPanel(
 );
 const provider = () => $<HTMLSelectElement>("provider").value as Provider;
 const keyStore = createProviderKeyStore();
+type RunAuthorization = { method: "A" | "B"; provider: Provider; key: string; review: boolean; maxCalls: number; epoch: number };
+type AnalysisSnapshot = {
+  epoch: number; active: Mode; geometries: Partial<Record<Mode,Geometry>>;
+  provenance: Partial<Record<Mode,Record<string,unknown>>>; warnings: Partial<Record<Mode,string[]>>;
+  mask?: MaskResult; maskUrl: string; threshold: number; epsilon: number;
+  calibrations: Partial<Record<Mode,KnownEdgeCalibration>>;
+};
+function selectedMethod(): "A" | "B" {
+  return $<HTMLInputElement>("methodA").checked ? "A" : "B";
+}
+function updateAnalysisDisclosure() {
+  const method = selectedMethod(), external = method === "A" || $<HTMLInputElement>("autoReview").checked;
+  const config = PROVIDERS[provider()];
+  $("analysisDisclosure").textContent = !external
+    ? "この端末で画像を解析します。外部への画像送信・API料金はありません。基準平面への補正から輪郭・寸法まで続けて実行します。"
+    : method === "A"
+      ? `「解析する」で、補正画像・方眼・基準寸法を${config.name}${provider()==="openrouter"?"とその推論提供先":""}へ送信します。有料のGPT-6 Luna推論を1回実行します（出力上限5,000トークン、金額上限ではありません）。`
+      : `「解析する」で、端末内解析の後、補正画像と候補画像を${config.name}${provider()==="openrouter"?"とその推論提供先":""}へ送信して有料評価します。最大${$<HTMLSelectElement>("reviewMaxCalls").value}回、各1,200出力トークン。料金上限の保証ではありません。`;
+  const validKey = !validateProviderKey(provider(), $<HTMLInputElement>("apiKey").value);
+  $("analysisKeyStatus").textContent = external ? validKey ? `${config.name}のキー設定済み。送信・料金説明を確認して開始してください。` : `${config.name}のAPIキーを設定してください。写真と選択方式はそのまま保持します。` : "B · 実際のU²-NetPモデルを使用。穴・側面・影の判別には限界があります。";
+  $("configureKey").hidden = !external;
+  $<HTMLInputElement>("autoReview").disabled = busy || method === "A";
+  document.querySelectorAll<HTMLElement>(".method-card").forEach(el=>el.classList.toggle("selected",!!el.querySelector<HTMLInputElement>("input")?.checked));
+}
+function openKeySettings() {
+  $<HTMLDetailsElement>("apiSettings").open = true;
+  $("apiSettings").scrollIntoView({block:"nearest",behavior:"instant"});
+}
+function showPreparedSource() {
+  if (!source) return;
+  active=selectedMethod();
+  const canvas = $<HTMLCanvasElement>("sourcePreview"), scale = Math.min(1, 540 / source.width);
+  canvas.width = Math.round(source.width*scale); canvas.height = Math.round(source.height*scale);
+  canvas.getContext("2d")!.drawImage(source,0,0,canvas.width,canvas.height);
+  $("inputSummary").textContent = `${sampleId ? "サンプル" : "選択した写真"} · ${source.width} × ${source.height} px`;
+  journeyToken = journey.begin(source, board, selectedMethod());
+  journey.pause();
+  pipelineFinishMessage = "写真を読み込みました。方式を選んで「解析する」を押してください。";
+  status(pipelineFinishMessage);
+  journey.setProcessing(pipelineFinishMessage,"idle",journeyToken);
+}
+function invalidateCalibration() {
+  sourceEpoch++; lastAnalysis=undefined;
+  flat=undefined;flatUrl="";gridUrl="";markers=[];journeyMarkerReport=undefined;
+  debug.reset();resetResults();showPreparedSource();
+}
+function prepareJourney(method: "A"|"B") {
+  if (!source) return;
+  journeyToken=journey.begin(source,board,method);
+  if (journeyMarkerReport) journey.setMarkers(journeyMarkerReport,journeyToken);
+  if (flat && markers.length===4) journey.setRectified(flat,homographyDetails(markers,board),journeyToken);
+}
+function ensureAnalysisMethod(method:"A"|"B") {
+  const needsScene=active!==method||journey.selectedMethod!==method||journeyToken===undefined;
+  if(dragging){geometries.C=dragging.before;dragging=undefined;}
+  drawing=undefined;selected=undefined;active=method;
+  $<HTMLInputElement>("methodA").checked=method==="A";$<HTMLInputElement>("methodB").checked=method==="B";
+  if(needsScene){prepareJourney(method);if(method==="B"&&mask)journey.setMask(mask,Number($<HTMLInputElement>("threshold").value),journeyToken);}
+  $("analysisSummary").dataset.method=method;
+}
+function showMethodResult(method:"A"|"B") {
+  if(dragging){geometries.C=dragging.before;dragging=undefined;}
+  drawing=undefined;selected=undefined;active=method;
+  $<HTMLInputElement>("methodA").checked=method==="A";$<HTMLInputElement>("methodB").checked=method==="B";
+  prepareJourney(method);
+  const geometry=geometries[method];
+  if(geometry && flat) {
+    if(method==="B" && mask){const t=Number(provenance.B?.mask_threshold??0.5);journey.setMask(mask,t,journeyToken);journey.setGeometry(traceMask(mask,board,t).rawGeometry,geometry,journeyToken);}
+    else if(method==="A")journey.setGeometry(geometry,journeyToken);
+    journey.skip();
+    status(`${method==="A"?"クラウドAI（A）":"この端末のAI（B）"}の取得済み結果を表示しています。`);
+    journey.setProcessing("取得済みの結果 · 新しいAPI送信はありません","complete",journeyToken);
+  } else {
+    journey.skip();
+    status(`${method==="A"?"クラウドAI（A）":"この端末のAI（B）"}は未解析です。「解析する」で開始します。`);
+    journey.setProcessing("選択方式の解析待ち","idle",journeyToken);
+  }
+  $("analysisSummary").dataset.state=geometry?"complete":"idle";
+  $("analysisSummary").dataset.method=method;
+  syncCalibrationDiagnostic();
+  render();
+}
+function captureAnalysis(): AnalysisSnapshot | undefined {
+  if(!geometries[active]||!validateGeometry(geometries[active]!).valid)return;
+  return {epoch:sourceEpoch,active,geometries:structuredClone(geometries),provenance:structuredClone(provenance),warnings:structuredClone(warnings),calibrations:structuredClone(calibrations),mask,maskUrl,threshold:Number($<HTMLInputElement>("threshold").value),epsilon:Number($<HTMLInputElement>("epsilon").value)};
+}
+function restoreAnalysis(snapshot:AnalysisSnapshot, message:string, preserveReviewRecord=true) {
+  if(snapshot.epoch!==sourceEpoch)return;
+  const currentReview=preserveReviewRecord&&active==="B"&&tuneReview?structuredClone(tuneReview):undefined;
+  for(const m of ["A","B","C"] as Mode[]){delete geometries[m];delete provenance[m];delete warnings[m];delete calibrations[m];}
+  Object.assign(geometries,structuredClone(snapshot.geometries));Object.assign(provenance,structuredClone(snapshot.provenance));Object.assign(warnings,structuredClone(snapshot.warnings));Object.assign(calibrations,structuredClone(snapshot.calibrations));
+  mask=snapshot.mask;maskUrl=snapshot.maskUrl;
+  $<HTMLInputElement>("threshold").value=String(snapshot.threshold);$<HTMLInputElement>("epsilon").value=String(snapshot.epsilon);
+  $("thresholdValue").textContent=snapshot.threshold.toFixed(3);$("epsilonValue").textContent=`${snapshot.epsilon.toFixed(2)} mm`;
+  active=snapshot.active;
+  resetTuning();
+  if(currentReview&&Array.isArray(currentReview.attempts)&&currentReview.attempts.length){
+    tuneReview={...currentReview,applied:false,restored_previous_result:true};
+    showReviewAttempts(currentReview.attempts as ReviewAttempt[]);
+    $("reviewStatus").textContent="今回の評価記録・料金情報を保持しています。表示中の寸法は前回の結果に戻しました。";
+    recordTuning();
+  }
+  if(active!=="C")showMethodResult(active);else{prepareJourney(selectedMethod());journey.stopForEdit();render();}
+  status(message);
+}
+async function analyzeSelected() {
+  if(busy||!source||drawing||dragging)return;
+  const method=selectedMethod(), review=method==="B"&&$<HTMLInputElement>("autoReview").checked;
+  const selectedProvider=provider(), needsExternal=method==="A"||review;
+  // The single explicit start authorizes only the recipient, images and bounded work disclosed beside it.
+  const key=needsExternal?$<HTMLInputElement>("apiKey").value:"";
+  const keyError=needsExternal?validateProviderKey(selectedProvider,key):undefined;
+  if(keyError){failureNeedsKey=true;$("analysisSummary").dataset.state="error";$("analysisFailure").hidden=false;$("analysisFailureMessage").textContent=keyError;status(keyError,true);openKeySettings();return;}
+  const maxCalls=Number($<HTMLSelectElement>("reviewMaxCalls").value);
+  if(review&&![1,2,3].includes(maxCalls)){status("LLM評価回数は1〜3回を選んでください。",true);return;}
+  const authorization:RunAuthorization={method,provider:selectedProvider,key,review,maxCalls,epoch:sourceEpoch};
+  const previous=captureAnalysis(); if(previous)lastAnalysis=previous;
+  unifiedRunActive=true;failureNeedsKey=false;$("analysisFailure").hidden=true;
+  $<HTMLInputElement>("debugStep").checked=false;
+  $<HTMLDetailsElement>("apiSettings").open=false;
+  active=method;
+  try {
+    await guarded(async()=>{
+      readCustomBoard();
+      if(!flat)await calibrate(method);
+      else {
+        prepareJourney(method);
+        processing("同じ写真・基準寸法の検出と補正結果を再利用しています…");
+        debug.remove(["api","probability","binary","contours","polygon","tuning"]);
+      }
+      pipelineAbort!.signal.throwIfAborted();
+      if(authorization.epoch!==sourceEpoch)throw new DOMException("入力が変更されました","AbortError");
+      if(method==="A")await runModeA(authorization);
+      else {
+        await runModeB();
+        pipelineAbort!.signal.throwIfAborted();
+        if(mask&&!tuneResult)await runAutomaticSearch("輪郭を保つ閾値・εを端末内で比較中",false);
+        pipelineAbort!.signal.throwIfAborted();
+        if(review&&tuneResult?.candidates.length)await runAutomaticReview(authorization);
+        else if(review)$("reviewStatus").textContent="有効候補がないためLLMには送信していません。";
+      }
+      if(!geometries[method]) {
+        $("analysisFailure").hidden=false;
+        $("analysisFailureMessage").textContent="有効な輪郭を取得できませんでした。写真を変更するか、詳細で候補・設定を確認してください。";
+        $<HTMLDetailsElement>("advancedDiagnostics").open=true;
+      }
+      pipelineFinishMessage ??= `${method==="A"?"クラウドAI（A）":"この端末のAI（B）"}の解析が完了しました。上面の縁・穴・寸法を確認してください。`;
+      status(pipelineFinishMessage);
+    }, previous);
+  } finally {unifiedRunActive=false;updateButtons();}
+}
+$("analyze").onclick=()=>void analyzeSelected();
+$("retryAnalysis").onclick=()=>void analyzeSelected();
+$("configureKey").onclick=openKeySettings;
+$("closeKeySettings").onclick=()=>{$<HTMLDetailsElement>("apiSettings").open=false;$("analyze").focus();};
+$("analysisCancel").onclick=()=>{pipelineAbort?.abort();activeRequest?.abort();};
+$("failureSettings").onclick=()=>{if(failureNeedsKey){openKeySettings();return;}$<HTMLDetailsElement>("advancedDiagnostics").open=true;$("advancedDiagnostics").scrollIntoView({block:"nearest",behavior:"instant"});};
+$("restoreAnalysis").onclick=()=>{if(!busy&&lastAnalysis)restoreAnalysis(lastAnalysis,"前回の解析結果に戻しました。新しい画像送信はありません。");};
+for(const id of ["methodA","methodB"])$(id).onchange=()=>{if(!busy)showMethodResult(selectedMethod());};
+$("autoReview").onchange=()=>{updateAnalysisDisclosure();};
+$("reviewMaxCalls").onchange=()=>{updateAnalysisDisclosure();};
+
 function showKeyStorageStatus(result: KeyStorageStatus) {
   const messages: Record<KeyStorageStatus, string> = {
-    loaded: "この接続先の保存キーを復元しました。送信するには下の確認が必要です。",
+    loaded: "この接続先の保存キーを復元しました。画像送信は「解析する」を押した時だけ行います。",
     empty: "この接続先の保存キーはありません。入力すると自動保存します。",
     saved: "このブラウザに保存しました。リロード後も復元されます。",
     cleared: "この接続先の保存キーを削除しました。",
@@ -212,14 +380,22 @@ const fmt = (v: number, d = 1) =>
     minimumFractionDigits: d,
   });
 function status(s: string, error = false) {
+  $("analysisSummary").textContent = s;
+  $("analysisProgress").textContent = s;
   $("status").textContent = s;
   $("status").classList.toggle("error", error);
 }
 function setBusy(v: boolean) {
   busy = v;
+  if(v){$("analysisSummary").dataset.state="running";$("analysisSummary").dataset.method=selectedMethod();}
   journey.setBusy(v);
   $("progress").classList.toggle("hidden", !v);
   updateButtons();
+  document.querySelectorAll<HTMLInputElement>('[name="analysisMethod"]').forEach(e => e.disabled = v);
+  $<HTMLInputElement>("autoReview").disabled=v||selectedMethod()==="A";
+  $("analysisCancel").hidden = !v;
+  $("analysisProgress").hidden = !v;
+  if(v&&unifiedRunActive)focusJourney();
   document
     .querySelectorAll<HTMLButtonElement>(".sample,#upload,#camera,#rectify")
     .forEach((b) => (b.disabled = v));
@@ -231,6 +407,12 @@ function setBusy(v: boolean) {
     $<HTMLInputElement>(id).disabled = v;
 }
 function updateButtons() {
+  $<HTMLButtonElement>("analyze").disabled = busy || !source || !!drawing || !!dragging;
+  $("analyze").textContent = busy ? "解析中…" : "解析する";
+  $<HTMLButtonElement>("retryAnalysis").disabled = busy || !source;
+  $<HTMLButtonElement>("restoreAnalysis").disabled = busy || !lastAnalysis || lastAnalysis.epoch !== sourceEpoch;
+  $("restoreAnalysis").hidden = !lastAnalysis;
+  updateAnalysisDisclosure();
   $<HTMLButtonElement>("tuneRestore").disabled = busy || !!drawing || !!dragging || !tuneOriginal;
   $<HTMLButtonElement>("autoTune").disabled = busy || !flat || !!drawing || !!dragging;
   $<HTMLButtonElement>("tuneStop").disabled = !busy || !tuneRunActive;
@@ -268,6 +450,7 @@ function resetResults() {
     delete geometries[m];
     delete provenance[m];
     delete warnings[m];
+    delete calibrations[m];
   }
   mask = undefined;
   maskUrl = "";
@@ -283,6 +466,61 @@ function ringPath(r: Point[]) {
 function allRings(g: Geometry) {
   return [g.outer, ...g.holes];
 }
+function currentCalibration(mode:Mode): KnownEdgeCalibration | undefined {
+  const c=calibrations[mode],g=geometries[mode];
+  if(!c)return;
+  if(!g||!validateGeometry(g).valid||!calibrationContextMatches(c,{sourceEpoch,mode})||c.geometrySignature!==measurementGeometrySignature(g)) {
+    if(!dragging){delete calibrations[mode];debug.remove(["calibration"]);}
+    return;
+  }
+  return c;
+}
+function syncCalibrationDiagnostic() {
+  const c=currentCalibration(active);
+  debug.remove(["calibration"]);
+  if(c)debug.record({id:"calibration",title:"既知の上面辺による計測値補正",details:{...c.provenance,photo_overlay_unchanged:true,physical_accuracy_tested:false}});
+}
+function measurementGeometry(mode:Mode):Geometry|undefined {
+  const g=geometries[mode];
+  return g?transformMeasurementGeometry(g,currentCalibration(mode),{sourceEpoch,mode}):undefined;
+}
+function renderCalibration() {
+  const g=geometries[active],valid=!!g&&validateGeometry(g).valid,c=currentCalibration(active);
+  const select=$<HTMLSelectElement>("calibrationEdge");
+  let previous=select.value;
+  const uiSignature=valid?`${sourceEpoch}:${active}:${measurementGeometrySignature(g)}`:`${sourceEpoch}:${active}:none`;
+  if(uiSignature!==calibrationUiSignature && !dragging){
+    calibrationUiSignature=uiSignature;
+    $<HTMLInputElement>("calibrationAssumptions").checked=!!c;
+    $<HTMLInputElement>("calibrationLength").value=c?String(c.knownLengthMm):"";
+    previous=c?String(c.edgeIndex):"0";
+  }
+  select.innerHTML=valid?g.outer.map((p,i)=>`<option value="${i}">E${i+1} · 補正前 ${fmt(Math.hypot(p.x-g.outer[(i+1)%g.outer.length].x,p.y-g.outer[(i+1)%g.outer.length].y),2)} mm</option>`).join(""):'<option value="">解析後に辺を選択</option>';
+  if(Array.from(select.options).some(o=>o.value===previous))select.value=previous;
+  const locked=busy||!!drawing||!!dragging||!valid;
+  for(const id of ["calibrationEdge","calibrationLength","calibrationAssumptions"])$<HTMLInputElement>(id).disabled=locked;
+  $<HTMLButtonElement>("applyCalibration").disabled=locked||!$<HTMLInputElement>("calibrationAssumptions").checked||!(Number($<HTMLInputElement>("calibrationLength").value)>0);
+  $<HTMLButtonElement>("clearCalibration").disabled=locked||!c;
+  $("calibrationStatus").textContent=c?`${active} · ${c.edgeId}: ${fmt(c.originalLengthMm,3)} → ${fmt(c.knownLengthMm,3)} mm ／ 長さ ×${fmt(c.scaleFactor,6)}、面積 ×${fmt(c.scaleFactor*c.scaleFactor,6)}。写真・方眼は台紙座標のままです。`:'実測値による補正は未適用です。輪郭を変更した場合は補正を設定し直してください。';
+  if(active!=="C"){
+    journey.setMeasurementScale(c?.scaleFactor??1,journeyToken);
+    journey.setReferenceEdge($<HTMLDetailsElement>("measurementCalibration").open && valid ? Number(select.value) : null,journeyToken);
+  }
+}
+$("calibrationEdge").onchange=()=>{renderCalibration();renderCanvas();};
+$("measurementCalibration").ontoggle=()=>{renderCalibration();renderCanvas();};
+$("calibrationLength").oninput=()=>renderCalibration();
+$("calibrationAssumptions").onchange=()=>renderCalibration();
+$("applyCalibration").onclick=()=>{
+  if(busy||drawing||dragging||!geometries[active]||!$<HTMLInputElement>("calibrationAssumptions").checked)return;
+  try {
+    const c=createKnownEdgeCalibration(geometries[active]!,Number($<HTMLSelectElement>("calibrationEdge").value),Number($<HTMLInputElement>("calibrationLength").value),{sourceEpoch,mode:active});
+    calibrations[active]=c;
+    syncCalibrationDiagnostic();
+    render();status("既知の上面辺で計測値を補正しました。写真の輪郭と方眼は変更していません。");
+  }catch(e){$("calibrationStatus").textContent=e instanceof Error?e.message:String(e);status($("calibrationStatus").textContent!,true);}
+};
+$("clearCalibration").onclick=()=>{if(busy)return;delete calibrations[active];debug.remove(["calibration"]);render();status("既知辺補正を解除し、元の計測値に戻しました。");};
 function renderCanvas() {
   const view = $<HTMLSelectElement>("view").value;
   let bg = flatUrl;
@@ -314,11 +552,15 @@ function renderCanvas() {
       if (!g || !$<HTMLInputElement>(`show${mode}`).checked) continue;
       html += `<path d="${allRings(g).map(ringPath).join("")}" fill="${mode === active ? colors[mode] + "12" : "none"}" fill-rule="evenodd" stroke="${colors[mode]}" stroke-width="${stroke * (mode === active ? 2 : 1.2)}" ${mode !== active ? 'stroke-dasharray="1.2 1"' : ""}/>`;
       if (mode === active) {
+        const measurementScale=currentCalibration(mode)?.scaleFactor??1;
         allRings(g).forEach((ring, ri) => {
           ring.forEach((p, i) => {
             const q = ring[(i + 1) % ring.length],
-              len = Math.hypot(q.x - p.x, q.y - p.y);
+              len = Math.hypot(q.x - p.x, q.y - p.y) * measurementScale;
             html += `<text x="${(p.x + q.x) / 2}" y="${(p.y + q.y) / 2 - font * 0.7}" font-size="${font}" fill="${colors[mode]}" text-anchor="middle" stroke="#fffc" stroke-width="${font * 0.28}" paint-order="stroke">${fmt(len)} mm</text>`;
+            if (ri===0 && $<HTMLDetailsElement>("measurementCalibration").open && Number($<HTMLSelectElement>("calibrationEdge").value)===i) {
+              html += `<line x1="${p.x}" y1="${p.y}" x2="${q.x}" y2="${q.y}" stroke="#d92778" stroke-width="${stroke*4}" pointer-events="none"/><text x="${(p.x+q.x)/2}" y="${(p.y+q.y)/2+font*1.1}" font-size="${font}" fill="#a4004c" stroke="#fff" stroke-width="${font*.2}" paint-order="stroke" text-anchor="middle">E${i+1} · 基準辺</text>`;
+            }
             if (mode === "C") {
               html += `<line data-edge="${ri},${i}" x1="${p.x}" y1="${p.y}" x2="${q.x}" y2="${q.y}" stroke="transparent" stroke-width="${handle * 3}" style="cursor:crosshair"/>`;
             }
@@ -341,11 +583,12 @@ function renderCanvas() {
   editor.innerHTML = html;
 }
 function render() {
+  renderCalibration();
   renderCanvas();
   document
     .querySelectorAll<HTMLButtonElement>("[data-mode]")
     .forEach((b) => b.classList.toggle("active", b.dataset.mode === active));
-  const g = geometries[active];
+  const raw = geometries[active], g = raw && validateGeometry(raw).valid ? measurementGeometry(active) : raw;
   $("area").textContent = g ? fmt(geometryArea(g), 0) : "—";
   $("vertices").textContent = g ? `${g.outer.length}` : "—";
   $("holes").textContent = g ? `${g.holes.length}` : "—";
@@ -364,7 +607,7 @@ function render() {
         )
         .join("")
     : '<p class="hint">AI抽出後に表示されます。</p>';
-  $("warnings").innerHTML = (warnings[active] ?? [])
+  $("warnings").innerHTML = [...(warnings[active] ?? []), ...(currentCalibration(active) ? ["既知の上面辺から計測値を一様補正しています。写真の輪郭・台紙方眼は未変更です。側面や残る歪みは補正できません。"] : [])]
     .map((w) => `<p class="warn">${esc(w)}</p>`)
     .join("");
   $("selected").textContent = selected
@@ -385,11 +628,11 @@ function renderBench() {
       if (!g)
         return `<div class="benchcard"><b>MODE ${m}</b><p>${m === "A" ? "API未実行" : m === "B" ? "AI未実行" : "未編集"}<br>予測値はまだありません。</p></div>`;
       const r = compareGeometry(g, truth);
-      return `<div class="benchcard"><b>MODE ${m} · 境界平均誤差</b><div style="margin-top:8px"><strong>${fmt(r.boundary_mean_mm, 2)}</strong><span class="hint"> mm</span></div><p>境界最大 ${fmt(r.boundary_max_mm, 2)} mm<br>面積誤差 ${fmt(r.area_error_percent, 2)}%<br>穴 ${g.holes.length} / 正解 ${truth!.holes.length}<br>${r.edge_length_mae_mm === null ? "辺誤差: 対応不一致" : `辺平均誤差 ${fmt(r.edge_length_mae_mm, 2)} mm`}</p>${r.hole_count_mismatch ? '<p class="warn">穴の見落とし / 個数不一致</p>' : ""}</div>`;
+      return `<div class="benchcard"><b>MODE ${m} · ${currentCalibration(m)?"既知辺補正前 · ":""}境界平均誤差</b><div style="margin-top:8px"><strong>${fmt(r.boundary_mean_mm, 2)}</strong><span class="hint"> mm</span></div><p>境界最大 ${fmt(r.boundary_max_mm, 2)} mm<br>面積誤差 ${fmt(r.area_error_percent, 2)}%<br>穴 ${g.holes.length} / 正解 ${truth!.holes.length}<br>${r.edge_length_mae_mm === null ? "辺誤差: 対応不一致" : `辺平均誤差 ${fmt(r.edge_length_mae_mm, 2)} mm`}</p>${r.hole_count_mismatch ? '<p class="warn">穴の見落とし / 個数不一致</p>' : ""}</div>`;
     })
     .join("");
 }
-async function calibrate() {
+async function calibrate(method: "A" | "B" = selectedMethod()) {
   if (!source) throw Error("先に写真を選んでください。");
   flat = undefined;
   flatUrl = "";
@@ -399,7 +642,7 @@ async function calibrate() {
   $("markerLabel").textContent = "MARKERS —";
   resetResults();
   debug.reset();
-  journeyToken = journey.begin(source, board);
+  journeyToken = journey.begin(source, board, method);
   const token = journeyToken;
   journey.setProcessing("入力写真を確認しています", "running", token);
   const signal = pipelineAbort?.signal;
@@ -483,9 +726,7 @@ async function calibrate() {
   $<HTMLSelectElement>("view").value = "rectified";
   $("scale").textContent =
     `${board.pixelWidth} × ${board.pixelHeight} px · 横 ${(board.width / board.pixelWidth).toFixed(3)} / 縦 ${(board.height / board.pixelHeight).toFixed(3)} mm/px`;
-  processing(
-    "平面補正できました。「B · 端末内AI」で実際の輪郭抽出を試せます。",
-  );
+  processing(unifiedRunActive ? "基準平面への補正ができました。AI解析へ進みます。" : "平面補正できました。AI解析は未実行です。");
   render();
 }
 function makeGridStage(input: HTMLCanvasElement) {
@@ -508,7 +749,7 @@ function makeGridStage(input: HTMLCanvasElement) {
     } as DebugStage,
   };
 }
-async function guarded(fn: () => Promise<void>) {
+async function guarded(fn: () => Promise<void>, previous?: AnalysisSnapshot) {
   if (busy) return;
   pipelineAbort = new AbortController();
   pipelineFinishMessage = undefined;
@@ -517,18 +758,34 @@ async function guarded(fn: () => Promise<void>) {
   try {
     await fn();
     pipelineAbort.signal.throwIfAborted();
-    journey.setProcessing(pipelineFinishMessage ?? "処理完了 · 説明再生とは別の実処理です", "complete", journeyToken);
+    $("analysisSummary").dataset.state = geometries[active] ? "complete" : "idle";
+    $("analysisSummary").dataset.method = active;
+    journey.setProcessing(pipelineFinishMessage ?? (geometries[active] ? "処理完了 · 説明再生とは別の実処理です" : "解析待ち · 写真と方式を確認して開始してください"), geometries[active] ? "complete" : "idle", journeyToken);
   } catch (e) {
     const aborted =
       pipelineAbort.signal.aborted ||
       (e instanceof Error && e.name === "AbortError");
     const message = aborted
-      ? "処理を中止しました。送信済みデータ・発生済みAPI料金は取り消せません。"
+      ? "処理を中止しました。外部送信済みの場合、送信データや発生済みAPI料金は取り消せません。"
       : e instanceof Error
         ? e.message
         : String(e);
-    status(message, !aborted);
-    if (aborted) {
+    const partial=!previous&&!!geometries[active]&&validateGeometry(geometries[active]!).valid;
+    if(previous)restoreAnalysis(previous, "前回の解析結果を保持しています。",true);
+    else if(partial){
+      provenance[active]={...provenance[active],pipeline_completion:aborted?"partial_cancelled":"partial_failed"};
+      warnings[active]=[...(warnings[active]??[]),"解析の途中で停止しました。表示はここまでに取得した輪郭で、後続の調整・評価は完了していません。"];
+      if(active!=="C")showMethodResult(active);
+    }
+    const retained=previous?" 前回の解析結果を保持しています。":partial?" ここまでに取得した輪郭を表示しています。未完了の工程があります。":"";
+    $("analysisFailure").hidden=false;
+    $("analysisFailureMessage").textContent=message+retained;
+    status(message+retained, !aborted);
+    $("analysisSummary").dataset.state = aborted ? "cancelled" : "error";
+    failureNeedsKey=e instanceof ProviderError && (e.stage==="authentication"||e.stage==="availability"||[401,402,403].includes(e.status??0));
+    if(previous||partial) {
+      journey.setProcessing(message+retained,aborted?"cancelled":"error",journeyToken);
+    } else if (aborted) {
       journey.cancel("処理を中止しました。新しく処理するまで説明は再開しません。");
       journeyToken = undefined;
     }
@@ -551,6 +808,10 @@ async function guarded(fn: () => Promise<void>) {
   }
 }
 function invalidateSource() {
+  sourceEpoch++;
+  lastAnalysis = undefined;
+  $("analysisFailure").hidden = true;
+  const preview = $<HTMLCanvasElement>("sourcePreview"); preview.width = preview.height = 1;
   journey.reset();
   journeyToken = undefined;
   journeyMarkerReport = undefined;
@@ -585,7 +846,7 @@ async function loadSample(id: string) {
     document
       .querySelectorAll<HTMLButtonElement>("[data-sample]")
       .forEach((b) => b.classList.toggle("active", b.dataset.sample === id));
-    await calibrate();
+    showPreparedSource();
     const response = await fetch(`${base}samples/${id}.truth.json`, {
       signal: pipelineAbort?.signal,
     });
@@ -671,9 +932,10 @@ function* vectorStages(): Generator<DebugStage, VectorResult> {
   return { r, rawGeometry: trace.rawGeometry, epsilon, threshold };
 }
 function commitVector(result: VectorResult) {
+  ensureAnalysisMethod("B");
   journey.setGeometry(result.rawGeometry, result.r.geometry, journeyToken);
   geometries.B = result.r.geometry;
-  warnings.B = result.r.warnings;
+  warnings.B = [...result.r.warnings,"前景AIは上面・側面・影を識別できません。台紙の平面補正だけでは厚みによる尺度誤差は解消しません。"];
   provenance.B = {
     ...provenance.B,
     epsilon_mm: result.epsilon,
@@ -681,6 +943,7 @@ function commitVector(result: VectorResult) {
   };
 }
 function revectorize() {
+  ensureAnalysisMethod("B");
   resetTuning();
   if(provenance.B) delete provenance.B.automatic_adjustment;
   if (!mask) return;
@@ -706,10 +969,11 @@ function revectorize() {
   render();
 }
 async function runModeB(vectorize = true) {
+  ensureAnalysisMethod("B");
   resetTuning();
   if (!flat) throw Error("平面補正が必要です。");
   if (journeyToken === undefined && source && journeyMarkerReport) {
-    journeyToken = journey.begin(source, board);
+    journeyToken = journey.begin(source, board, "B");
     journey.setMarkers(journeyMarkerReport, journeyToken);
     journey.setRectified(flat, homographyDetails(markers, board), journeyToken);
   }
@@ -718,6 +982,7 @@ async function runModeB(vectorize = true) {
   const token = journeyToken;
   delete geometries.B;
   delete provenance.B;
+  delete calibrations.B;
   delete warnings.B;
   mask = undefined;
   maskUrl = "";
@@ -833,6 +1098,7 @@ function applyTuningCandidate(candidate:Candidate, reason:string) {
   const canonical=tuneResult.candidates.find(c=>c.id===candidate.id&&c.threshold===candidate.threshold&&c.epsilon===candidate.epsilon);
   if(!canonical || JSON.stringify(canonical.geometry)!==JSON.stringify(candidate.geometry))throw Error("候補が更新されています。現在の一覧から選び直してください。");
   candidate=canonical;
+  ensureAnalysisMethod("B");
   $<HTMLInputElement>("threshold").value=String(candidate.threshold);
   $<HTMLInputElement>("epsilon").value=String(candidate.epsilon);
   if(Number($<HTMLInputElement>("threshold").value)!==candidate.threshold || Number($<HTMLInputElement>("epsilon").value)!==candidate.epsilon) throw Error("候補の設定を正確に反映できません。採用を停止しました。");
@@ -853,6 +1119,7 @@ function applyTuningCandidate(candidate:Candidate, reason:string) {
 async function runAutomaticSearch(reason:string, obtainMask=true) {
   if(drawing||dragging)throw Error("編集中の図形を確定または中止してください。");
   if(!flat) throw Error("平面補正が必要です。");
+  ensureAnalysisMethod("B");
   tuneRunActive=true;updateButtons();
   try {
     if(!mask) {if(!obtainMask)throw Error("AIマスクがありません。");await runModeB(false);}
@@ -867,8 +1134,10 @@ async function runAutomaticSearch(reason:string, obtainMask=true) {
     }
     $("reviewStatus").textContent="LLM評価は未実行です。";
     $("tuneStatus").textContent=reason;
+    processing(reason);
     const result=await searchMaskCandidates(fixedMask,fixedBoard,{currentThreshold:Number($<HTMLInputElement>("threshold").value),currentEpsilon:Number($<HTMLInputElement>("epsilon").value),signal:pipelineAbort?.signal,onProgress:p=>{
       $("tuneStatus").textContent=`${reason} · ${p.attempts}/${p.maxCandidates}設定を処理、${p.validCandidates}候補（${(p.elapsedMs/1000).toFixed(1)}秒）`;
+      if(unifiedRunActive)processing($("tuneStatus").textContent!);
     }});
     if(epoch!==tuneEpoch||mask!==fixedMask||flat!==fixedFlat||board!==fixedBoard) return;
     tuneResult=result;
@@ -898,13 +1167,14 @@ function showReviewAttempts(attempts:ReviewAttempt[]) {
   const tokens=attempts.reduce((sum,a)=>sum+(a.usage.totalTokens??0),0),tokenUnknown=attempts.some(a=>a.usage.totalTokens===null);
   $("reviewUsage").textContent=`API評価試行 ${attempts.length}回（画像送信 ${attempts.filter(a=>a.inferenceSent===true).length}回${attempts.some(a=>a.inferenceSent===null)?"＋不明分":""}） · 報告トークン ${tokens}${tokenUnknown?"＋不明分":""} · 報告料金 $${costs.toFixed(6)}${unknown?` ＋料金不明 ${unknown}回`:""}。送信済み料金は取消できない場合があります。`;
 }
-async function runAutomaticReview() {
+async function runAutomaticReview(authorization?: RunAuthorization) {
   if(drawing||dragging)throw Error("編集中の図形を確定または中止してください。");
-  if(!flat||!mask||!tuneResult||!$<HTMLInputElement>("reviewConsent").checked)throw Error("候補と画像送信の確認が必要です。");
-  const selectedProvider=provider(), key=$<HTMLInputElement>("apiKey").value, keyError=validateProviderKey(selectedProvider,key);
+  if(!flat||!mask||!tuneResult||(!authorization?.review && !$<HTMLInputElement>("reviewConsent").checked))throw Error("候補と画像送信の確認が必要です。");
+  ensureAnalysisMethod("B");
+  const selectedProvider=authorization?.provider ?? provider(), key=authorization?.key ?? $<HTMLInputElement>("apiKey").value, keyError=validateProviderKey(selectedProvider,key);
   if(keyError)throw Error(keyError);
   const safe=tuneResult.candidates.find(c=>c.safeToAutoApply)??tuneResult.candidates[0];if(!safe)throw Error("幾何的に有効な候補がありません。");
-  const maxCalls=Number($<HTMLSelectElement>("reviewMaxCalls").value);if(![1,2,3].includes(maxCalls))throw Error("評価上限は1〜3回です。");
+  const maxCalls=authorization?.maxCalls ?? Number($<HTMLSelectElement>("reviewMaxCalls").value);if(![1,2,3].includes(maxCalls))throw Error("評価上限は1〜3回です。");
   const fixedMask=mask,fixedFlat=flat,fixedBoard=board,epoch=tuneEpoch;
   activeRequest=new AbortController();tuneRunActive=true;updateButtons();
   const signal=AbortSignal.any([activeRequest.signal,pipelineAbort!.signal]);
@@ -912,7 +1182,7 @@ async function runAutomaticReview() {
   tuneReview=undefined;$("reviewStatus").textContent="選択済み接続先で評価を開始します…";showReviewAttempts([]);
   try {
     const result=await runReviewLoop({initialCandidates:candidates,localFallback:toReviewCandidate(safe),maxCalls:maxCalls as 1|2|3,signal,
-      evaluate:(batch,attempt,callSignal)=>reviewCandidates({provider:selectedProvider,key,consent:true,photographDataUrl:reviewPhotograph(fixedFlat),candidates:batch,signal:callSignal,progress:message=>{$("reviewStatus").textContent=`${attempt}/${maxCalls}回 · ${message}`;}}),
+      evaluate:(batch,attempt,callSignal)=>reviewCandidates({provider:selectedProvider,key,consent:true,photographDataUrl:reviewPhotograph(fixedFlat),candidates:batch,signal:callSignal,progress:message=>{$("reviewStatus").textContent=`${attempt}/${maxCalls}回 · ${message}`;if(unifiedRunActive)processing($("reviewStatus").textContent!);}}),
       refine:async(review:CandidateReview,current,best)=>{
         signal.throwIfAborted();
         const center=best?.local??current[0].local, direction=review.adjustment.threshold_direction;
@@ -940,6 +1210,7 @@ async function runAutomaticReview() {
 $("tuneRestore").onclick=()=>{
   if(busy||drawing||dragging||!tuneOriginal)return;
   const previous=tuneOriginal;
+  ensureAnalysisMethod("B");
   geometries.B=cloneGeometry(previous.geometry);provenance.B=previous.provenance;warnings.B=previous.warnings;
   $<HTMLInputElement>("threshold").value=String(previous.threshold);$<HTMLInputElement>("epsilon").value=String(previous.epsilon);
   $("thresholdValue").textContent=previous.threshold.toFixed(3);$("epsilonValue").textContent=`${previous.epsilon.toFixed(2)} mm`;
@@ -950,7 +1221,7 @@ $("tuneRestore").onclick=()=>{
   $("tuneStatus").textContent="調整前の結果に戻しました。探索候補は比較用に残っています。";renderTuning();render();
 };
 $("autoTune").onclick=()=>void guarded(()=>runAutomaticSearch("閾値・εの候補を探索"));
-$("reviewRun").onclick=()=>void guarded(runAutomaticReview);
+$("reviewRun").onclick=()=>void guarded(()=>runAutomaticReview());
 $("tuneStop").onclick=()=>{pipelineAbort?.abort();activeRequest?.abort();};
 $<HTMLInputElement>("reviewConsent").onchange=()=>{activeRequest?.abort();updateButtons();};
 $("reviewKeys").onclick=()=>{const section=$("provider").closest("details")!;section.open=true;section.scrollIntoView({block:"center",behavior:"instant"});};
@@ -1030,7 +1301,7 @@ function handlePhotoSelection(input: HTMLInputElement) {
     photoUrl = source.toDataURL("image/jpeg", 0.95);
     $("sourceLabel").textContent = f.name;
     pipelineAbort?.signal.throwIfAborted();
-    await calibrate();
+    showPreparedSource();
   });
 }
 document.querySelectorAll<HTMLButtonElement>("[data-sample]").forEach(
@@ -1046,22 +1317,26 @@ $<HTMLSelectElement>("preset").onchange = () => {
   const p = $<HTMLSelectElement>("preset").value;
   $("custom").classList.toggle("hidden", p !== "custom");
   if (p === "custom") {
+    sourceEpoch++;lastAnalysis=undefined;
     truth = undefined;
     flat = undefined;
     flatUrl = "";
     gridUrl = "";
     debug.reset();
     resetResults();
-    status("カスタム寸法を入力して、平面補正を実行してください。");
+    markers=[];journeyMarkerReport=undefined;
+    showPreparedSource();
+    status("カスタム寸法を入力して「解析する」を押してください。");
   } else {
     board = { ...PRESETS[p] };
     truth = undefined;
-    void guarded(calibrate);
+    invalidateCalibration();
   }
 };
 for (const id of ["width", "height"])
   $<HTMLInputElement>(id).onchange = () => {
     if (busy) return;
+    sourceEpoch++; lastAnalysis = undefined;
     journey.reset();
     journeyToken = undefined;
     flat = undefined;
@@ -1079,7 +1354,7 @@ for (const id of ["width", "height"])
       flatUrl = "";
       truth = undefined;
       resetResults();
-      status("基準寸法を変更しました。平面補正を再実行してください。");
+      showPreparedSource();
     } catch (e) {
       status(String(e), true);
     }
@@ -1093,7 +1368,7 @@ $("rectify").onclick = () =>
       );
     await calibrate();
   });
-$("runB").onclick = () => void guarded(async () => { focusJourney(); await runModeB(); });
+$("runB").onclick = () => void guarded(async () => { await runModeB(); });
 for (const id of ["epsilon", "threshold"])
   $<HTMLInputElement>(id).oninput = () => {
     $("epsilonValue").textContent =
@@ -1111,6 +1386,7 @@ for (const id of ["epsilon", "threshold"])
   };
 $<HTMLInputElement>("apiKey").oninput = () => {
   activeRequest?.abort();
+  if (unifiedRunActive) pipelineAbort?.abort();
   $<HTMLInputElement>("reviewConsent").checked=false;
   $<HTMLInputElement>("consent").checked = false;
   const result = keyStore.save(provider(), $<HTMLInputElement>("apiKey").value);
@@ -1125,6 +1401,7 @@ $<HTMLInputElement>("consent").oninput = () => {
 };
 $("clearKey").onclick = () => {
   activeRequest?.abort();
+  if (unifiedRunActive) pipelineAbort?.abort();
   $<HTMLInputElement>("reviewConsent").checked = false;
   $<HTMLInputElement>("apiKey").value = "";
   $<HTMLInputElement>("consent").checked = false;
@@ -1135,6 +1412,7 @@ $("clearKey").onclick = () => {
 };
 $<HTMLSelectElement>("provider").onchange = () => {
   activeRequest?.abort();
+  if (unifiedRunActive) pipelineAbort?.abort();
   restoreProviderKey();
   status(`接続先を${PROVIDERS[provider()].name}に変更しました。この接続先のキーだけを使用します。送信前に確認してください。`);
 };
@@ -1142,21 +1420,23 @@ window.addEventListener("storage", (event) => {
   try { if (event.storageArea !== window.localStorage) return; } catch { return; }
   if (event.key !== null && event.key !== providerStorageKey(provider())) return;
   activeRequest?.abort();
+  if (unifiedRunActive) pipelineAbort?.abort();
   restoreProviderKey();
 });
-$("runA").onclick = () =>
-  void guarded(async () => {
-    if (!flat || !$<HTMLInputElement>("consent").checked)
+async function runModeA(authorization?: RunAuthorization) {
+    ensureAnalysisMethod("A");
+    if (!flat || (!authorization && !$<HTMLInputElement>("consent").checked))
       throw Error("写真送信とAPI利用料の確認が必要です。");
-    revealEditor("Mode Aは外部APIの実応答を計測キャンバスに表示します。");
-    const selectedProvider = provider(),
-      key = $<HTMLInputElement>("apiKey").value,
+    const selectedProvider = authorization?.provider ?? provider(),
+      key = authorization?.key ?? $<HTMLInputElement>("apiKey").value,
       keyError = validateProviderKey(selectedProvider, key);
     if (keyError) throw Error(keyError);
     delete geometries.A;
+    delete calibrations.A;
     delete provenance.A;
     delete warnings.A;
     active = "A";
+    if(!unifiedRunActive) journey.clearAnalysis(journeyToken);
     debug.remove(["api", "polygon"]);
     render();
     activeRequest = new AbortController();
@@ -1189,6 +1469,7 @@ $("runA").onclick = () =>
             endpoint: PROVIDERS[r.provider].endpoint,
             request_id: r.requestId,
             geometry_validated: true,
+            surface_assessment: r.surfaceAssessment,
           },
         },
         signal,
@@ -1212,6 +1493,7 @@ $("runA").onclick = () =>
         signal,
       );
       signal.throwIfAborted();
+      journey.setGeometry(r.geometry, journeyToken);
       geometries.A = r.geometry;
       provenance.A = {
         method:
@@ -1221,10 +1503,12 @@ $("runA").onclick = () =>
         provider: r.provider,
         model: r.model,
         request_id: r.requestId,
+        surface_assessment: r.surfaceAssessment,
+        surface_target_verified: false,
         grid_step_mm: Number($<HTMLSelectElement>("gridstep").value),
         scale_mm_per_px: board.width / board.pixelWidth,
       };
-      warnings.A = ["LLM座標は視覚的な推定です。製造用の精度を保証しません。"];
+      warnings.A = ["上面境界を指定して推定しましたが、上面だけを正しく抽出したことは未検証です。厚みの尺度誤差と側面・影の混入を確認してください。", "LLM座標は視覚的な推定です。製造用の精度を保証しません。", ...(r.surfaceAssessment.uncertain?["上面の境界に不確実な箇所があるとAIが報告しています。"]:[]), ...(r.surfaceAssessment.occluded_edges?["見えない上面の縁が含まれています。該当する辺の寸法は実測してください。"]:[]), ...(r.surfaceAssessment.sidewall_risk?["側面が境界に混ざる危険が報告されています。正面に近い撮影で再解析してください。"]:[])];
       active = "A";
       processing(
         "GPT-6 Lunaの実際の応答を表示しています。頂点・穴・寸法を確認してください。",
@@ -1232,7 +1516,8 @@ $("runA").onclick = () =>
     } finally {
       activeRequest = undefined;
     }
-  });
+}
+$("runA").onclick = () => void guarded(async()=>{ await runModeA(); });
 $<HTMLSelectElement>("gridstep").onchange = () => {
   if (flat) {
     const grid = makeGridStage(flat);
@@ -1250,7 +1535,9 @@ document.querySelectorAll<HTMLButtonElement>("[data-mode]").forEach(
         geometries.C = dragging.before;
         dragging = undefined;
       }
-      revealEditor("選択したモードを計測キャンバスで比較します。");
+      if (busy) return;
+      if(b.dataset.mode==="A" || b.dataset.mode==="B"){showMethodResult(b.dataset.mode);return;}
+      revealEditor("手動編集した輪郭を表示します。");
       active = b.dataset.mode as Mode;
       selected = undefined;
       drawing = undefined;
@@ -1263,6 +1550,7 @@ $("editC").onclick = () => {
   if (!g) return;
   const from = active;
   geometries.C = cloneGeometry(g);
+  delete calibrations.C;
   provenance.C = {
     ...provenance[from],
     method: "human-edited",
@@ -1439,17 +1727,23 @@ for (const [id, type, ext, fn] of [
     if (!g) return;
     try {
       download(
-        fn(g, board, board.preset, {
+        fn(measurementGeometry(active)!, board, board.preset, {
           ...provenance[active],
           app_build: APP_BUILD,
-          scale_mm_per_px: board.width / board.pixelWidth,
+          measurement_calibration: currentCalibration(active)?.provenance ?? null,
+          coordinate_space: currentCalibration(active) ? "measurement-only calibrated coordinates; photo overlays remain in original board coordinates" : "original marker-plane millimetres",
+          original_geometry_mm: currentCalibration(active) ? g : undefined,
+          marker_plane_mm_per_px: {x:board.width/board.pixelWidth,y:board.height/board.pixelHeight},
+          svg_export_bounds_mm: svgExportBounds(measurementGeometry(active)!,board),
+          export_translation_mm: {x:0,y:0},
+          scale_mm_per_px: board.width / board.pixelWidth * (currentCalibration(active)?.scaleFactor ?? 1),
           source_image: sampleId || "user-upload",
-          scale_y_mm_per_px: board.height / board.pixelHeight,
+          scale_y_mm_per_px: board.height / board.pixelHeight * (currentCalibration(active)?.scaleFactor ?? 1),
         }),
         type,
         ext,
       );
-      status(`${ext.toUpperCase()}を実寸mmで書き出しました。`);
+      status(`${ext.toUpperCase()}を実寸mmで書き出しました${currentCalibration(active)?"（既知の上面辺による計測値補正を適用）":""}。`);
     } catch (e) {
       status(String(e), true);
     }

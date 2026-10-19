@@ -9,11 +9,12 @@
   margin-bottom: 18px;
 }
 .journey-heading { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 20px 22px; }
-.journey-eyebrow { color: #688063; font: 10px ui-monospace, SFMono-Regular, monospace; letter-spacing: .12em; margin: 0 0 7px; }
+.journey-title { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; }
+.journey-method { color: #536448; background: #e9efdf; border: 1px solid #d4dfcb; border-radius: 999px; padding: 5px 9px; font: 11px ui-monospace, SFMono-Regular, monospace; white-space: nowrap; }
 .journey-heading h2 { font-size: clamp(17px, 1.45vw, 22px); font-weight: 550; letter-spacing: -.03em; margin: 0; }
 .journey-actions { display: flex; align-items: center; gap: 7px; }
 .journey-actions button { font-size: 12px; min-height: 44px; white-space: nowrap; }
-#journeyRun { display: flex; gap: 16px; align-items: center; }
+#journeyRun[hidden], #journeyEdit[hidden], #journeyMask[hidden] { display: none; }
 #journeyEdit { background: transparent; border-color: transparent; }
 .journey-scene { position: relative; isolation: isolate; height: clamp(320px, 43vw, 590px); min-height: 320px; overflow: hidden; background-color: #20291f; background-image: radial-gradient(ellipse at 50% 45%, #3b4937 0%, #263223 55%, #1b231a 100%); }
 .journey-source, .journey-plane { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
@@ -59,9 +60,7 @@
 .measurement-journey[data-reduced-motion="true"] .journey-plane,
 .measurement-journey[data-reduced-motion="true"] .journey-plane canvas { will-change: auto; }
 @media (max-width: 1150px) {
-  .journey-heading { align-items: flex-start; flex-direction: column; gap: 13px; }
-  .journey-actions { width: 100%; }
-  #journeyRun { flex: 1; justify-content: space-between; }
+  .journey-heading { gap: 10px; }
   .journey-bottom { flex-wrap: wrap; }
   .journey-motion-note { max-width: none; text-align: left; }
   .journey-caption { gap: 10px; }
@@ -69,7 +68,11 @@
 }
 @media (max-width: 600px) {
   .measurement-journey { border-radius: 9px; }
-  .journey-heading { padding: 17px 15px 15px; }
+  .journey-heading { padding: 15px; }
+  .journey-title { gap: 8px; }
+  .journey-heading h2 { font-size: 16px; }
+  .journey-method { font-size: 9px; padding: 4px 7px; }
+  #journeyEdit { font-size: 10px; padding: 6px 4px; }
   .journey-scene { height: 360px; min-height: 300px; }
   .journey-caption { padding: 15px 15px 11px; flex-direction: column; gap: 4px; }
   .journey-stage-title { font-size: 16px; }
@@ -89,3 +92,9 @@
 
 #journeyCancel { margin-left: auto; flex-shrink: 0; min-height: 44px; padding: 7px 10px; color: #744d36; background: transparent; border-color: #c5cdbb; font-size: 11px; }
 #journeyCancel[hidden] { display: none; }
+
+/* The calibration reference always owns a visible badge, independent of dimensions. */
+.journey-reference-edge line { stroke: #ffe37a; stroke-width: 3.5; stroke-linecap: round; }
+.journey-reference-edge .journey-reference-edge-halo { stroke: #172718d9; stroke-width: 7; }
+.journey-reference-edge rect { fill: #203521; stroke: #ffe37a; stroke-width: 1.5; }
+.journey-reference-edge text { font: 700 12px ui-monospace, SFMono-Regular, monospace; fill: #fff1a5; text-anchor: middle; }

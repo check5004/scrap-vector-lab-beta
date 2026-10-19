@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { providerStorageKey } from '../../src/key-storage';
+import { legacyReady, openDetailsFor } from './legacy-ui';
 
 // Deliberately synthetic credentials only. All off-origin requests are blocked.
 const routerKey = 'sk-or-v1-SYNTHETIC_LOCAL_STORAGE_TEST_ONLY';
@@ -8,12 +9,8 @@ const openaiKey = 'sk-proj-SYNTHETIC_LOCAL_STORAGE_TEST_ONLY';
 const routerSlot = providerStorageKey('openrouter')!;
 const openaiSlot = providerStorageKey('openai')!;
 async function openKeys(page: Page) {
-  await expect(page.locator('#runB')).toBeEnabled({ timeout: 30000 });
-  const section = page.locator('details').filter({ has: page.locator('#provider') });
-  if (!(await section.getAttribute('open'))) {
-    // Boolean open attributes may be the empty string, so inspect their presence.
-    if (!(await section.evaluate(el => el.hasAttribute('open')))) await section.locator('summary').click();
-  }
+  await legacyReady(page);
+  await openDetailsFor(page, '#apiKey');
 }
 test.beforeEach(async ({ context, baseURL }) => {
   const origin = new URL(baseURL!).origin;
