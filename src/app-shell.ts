@@ -72,6 +72,12 @@ export function createAppShell(
           <label class="review-toggle" for="autoReview"><input id="autoReview" type="checkbox"><span><strong>Bの追加チェック</strong><span>候補画像をクラウドAIで確認・再調整（任意・有料）</span></span></label>
           <label class="review-limit" for="reviewMaxCalls">API呼出し上限<select id="reviewMaxCalls"><option value="1">1回</option><option value="2" selected>2回</option><option value="3">3回</option></select></label>
         </div>
+        <details id="analysisSettings" class="analysis-settings"><summary><span>解析の詳細設定</span><span class="details-caption">前景閾値 / 直線化 / 自動調整</span></summary>
+          <div class="analysis-settings-content"><section class="manual-analysis-settings"><h3>B · 輪郭の手動調整</h3><p class="hint">通常は変更せずに「解析する」で進めます。Bの結果がある場合、閾値・εの変更でその輪郭を再計算します。</p><div class="mask-settings"><label class="field">直線化の許容差 ε <b id="epsilonValue">1.0 mm</b><input id="epsilon" type="range" min="0.5" max="10" step="0.001" value="1"></label><label class="field">前景確率 <b id="thresholdValue">0.50</b><input id="threshold" type="range" min="0.1" max="0.9" step="0.001" value="0.5"></label></div><p class="hint">Bは320 × 320のAIマスクをミリ座標へ変換します。穴や細部を見落とすことがあります。検出されなかった穴はCモードで修正できます。</p></section>
+          <details class="analysis-grid-settings"><summary>A · 画像に重ねる方眼</summary><label class="field grid-field">画像の方眼間隔<select id="gridstep"><option value="10">10 mm</option><option value="25">25 mm</option><option value="50">50 mm</option><option value="100">100 mm</option></select></label><p class="hint">クラウドAIに渡す補正画像の方眼です。台紙の校正値や実寸は変わりません。</p></details>
+          ${diagnostics}
+          </div>
+        </details>
         <div class="analysis-start">
           <div class="analysis-action-row"><button id="analyze" type="button" class="primary analyze-button">解析する <span aria-hidden="true">↗</span></button><button id="analysisCancel" type="button" class="analysis-cancel" hidden>解析を中止</button><div class="key-action"><span id="analysisKeyStatus" role="status">BはAPIキーなしで使えます。</span><button id="configureKey" type="button" class="text-button" aria-controls="apiSettings">接続先・APIキー</button></div></div>
           <p id="analysisProgress" class="analysis-live-progress" role="status" hidden></p>
@@ -80,7 +86,7 @@ export function createAppShell(
         <details id="apiSettings" class="api-settings"><summary>接続先・APIキーの設定</summary>
           <div class="api-fields"><label class="field">API接続先<select id="provider"><option value="openrouter" selected>OpenRouter（OpenRouterのキー）</option><option value="openai">OpenAI直接（OpenAIのキー）</option></select></label><label class="field"><span id="apiKeyLabel">OpenRouter APIキー（このブラウザに保存）</span><input id="apiKey" type="password" placeholder="sk-or-v1-…" autocomplete="off" spellcheck="false" aria-describedby="keyStorageHelp keyStorageStatus"></label></div>
           <p id="providerTarget" class="provider-target"></p><p id="keyStorageStatus" class="provider-note" role="status" aria-live="polite"></p><p id="keyValidation" class="provider-note" role="status"></p>
-          <div class="key-settings-actions"><button id="clearKey" type="button">この接続先の保存キーを削除</button><label class="field grid-field">画像の方眼間隔<select id="gridstep"><option value="10">10 mm</option><option value="25">25 mm</option><option value="50">50 mm</option><option value="100">100 mm</option></select></label></div>
+          <div class="key-settings-actions"><button id="clearKey" type="button">この接続先の保存キーを削除</button></div>
           <details class="key-help"><summary>保存と送信について</summary><p id="keyStorageHelp" class="hint">ベータ専用の保存名を使い、本番の保存キーは読込・移行・削除しません。同じホスト名のため完全なセキュリティ隔離ではありません。入力したキーは接続先ごとに、この端末・ブラウザのlocalStorageへ自動保存され、リロード後も復元されます。共有端末では使わず、利用後は削除してください。暗号化保存ではなく、同じサイト（ホスト名）のページや拡張機能から読まれる可能性があります。別の端末・ブラウザには同期しません。プライベートモードやサイトデータ削除では失われる場合があります。保存だけではAPIに送信しません。</p><p class="hint">ブラウザでのキー入力は信頼する端末・このPoC限定でご利用ください。キーなしでは外部APIを実行しません。接続先ごとのキーが必要です。失敗時の代替推論・架空結果はありません。</p></details>
           <button id="closeKeySettings" type="button" class="close-key-settings">設定を閉じて解析に戻る ↑</button>
         </details>
@@ -106,9 +112,8 @@ export function createAppShell(
       </div>
     </section>
 
-    <details id="advancedDiagnostics" class="advanced-diagnostics"><summary><span>詳細設定・診断</span><span class="details-caption">輪郭調整 / 処理記録 / 検証</span></summary>
-      <div class="diagnostics-content"><section class="diagnostic-controls"><h3>処理を個別に実行</h3><p class="hint">通常は「解析する」だけで完了します。ここでは補正・推論・候補調整を個別に確認できます。</p><label class="confirm"><input id="consent" type="checkbox"><span id="consentText"></span></label><div class="diagnostic-buttons"><button id="rectify" type="button">マーカー検出・平面補正</button><button id="runA" type="button" disabled>A · GPT-6 Lunaで推論</button><button id="runB" type="button" disabled>B · 端末内AIで輪郭を抽出</button></div><div class="mask-settings"><label class="field">直線化の許容差 ε <b id="epsilonValue">1.0 mm</b><input id="epsilon" type="range" min="0.5" max="10" step="0.001" value="1"></label><label class="field">前景確率 <b id="thresholdValue">0.50</b><input id="threshold" type="range" min="0.1" max="0.9" step="0.001" value="0.5"></label></div><p class="hint">Bは320 × 320のAIマスクをミリ座標へ変換します。穴や細部を見落とすことがあります。検出されなかった穴はCモードで修正できます。</p></section>
-        ${diagnostics}
+    <details id="advancedDiagnostics" class="advanced-diagnostics"><summary><span>処理の診断・検証</span><span class="details-caption">個別実行 / 処理記録 / 検証</span></summary>
+      <div class="diagnostics-content"><section class="diagnostic-controls"><h3>処理を個別に実行</h3><p class="hint">通常は「解析する」だけで完了します。ここでは補正・推論・候補調整を個別に確認できます。</p><label class="confirm"><input id="consent" type="checkbox"><span id="consentText"></span></label><div class="diagnostic-buttons"><button id="rectify" type="button">マーカー検出・平面補正</button><button id="runA" type="button" disabled>A · GPT-6 Lunaで推論</button><button id="runB" type="button" disabled>B · 端末内AIで輪郭を抽出</button></div></section>
         <details class="diagnostic-details"><summary>マーカー認識・処理途中の画像</summary><section id="debugPanel" class="panel debug-panel"></section></details>
         <details class="diagnostic-details"><summary>合成写真の検証ベンチ</summary><div class="compare"><h3>既知寸法との比較</h3><div id="benchmark" class="benchgrid"></div><p class="hint">正解は評価だけに使用し、AIの入力・予測には使用しません。曲線は多角形近似。誤差はこの合成画像での結果で、実物の精度保証ではありません。</p></div></details>
       </div>

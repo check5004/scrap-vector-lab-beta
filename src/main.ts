@@ -291,7 +291,7 @@ async function analyzeSelected() {
       if(!geometries[method]) {
         $("analysisFailure").hidden=false;
         $("analysisFailureMessage").textContent="有効な輪郭を取得できませんでした。写真を変更するか、詳細で候補・設定を確認してください。";
-        $<HTMLDetailsElement>("advancedDiagnostics").open=true;
+        $<HTMLDetailsElement>("analysisSettings").open=true;
       }
       pipelineFinishMessage ??= `${method==="A"?"クラウドAI（A）":"この端末のAI（B）"}の解析が完了しました。上面の縁・穴・寸法を確認してください。`;
       status(pipelineFinishMessage);
@@ -303,7 +303,7 @@ $("retryAnalysis").onclick=()=>void analyzeSelected();
 $("configureKey").onclick=openKeySettings;
 $("closeKeySettings").onclick=()=>{$<HTMLDetailsElement>("apiSettings").open=false;$("analyze").focus();};
 $("analysisCancel").onclick=()=>{pipelineAbort?.abort();activeRequest?.abort();};
-$("failureSettings").onclick=()=>{if(failureNeedsKey){openKeySettings();return;}$<HTMLDetailsElement>("advancedDiagnostics").open=true;$("advancedDiagnostics").scrollIntoView({block:"nearest",behavior:"instant"});};
+$("failureSettings").onclick=()=>{if(failureNeedsKey){openKeySettings();return;}$<HTMLDetailsElement>("analysisSettings").open=true;$("analysisSettings").scrollIntoView({block:"nearest",behavior:"instant"});};
 $("restoreAnalysis").onclick=()=>{if(!busy&&lastAnalysis)restoreAnalysis(lastAnalysis,"前回の解析結果に戻しました。新しい画像送信はありません。");};
 for(const id of ["methodA","methodB"])$(id).onchange=()=>{if(!busy)showMethodResult(selectedMethod());};
 $("autoReview").onchange=()=>{updateAnalysisDisclosure();};

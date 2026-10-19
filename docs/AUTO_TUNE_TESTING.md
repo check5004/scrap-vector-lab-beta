@@ -88,11 +88,36 @@ Cancel and editor-toggle controls, with the same semantic and touch assertions.
 
 ## Coverage
 
+### Analysis-settings placement (dev.3)
+
+`tests/browser/analysis-settings.spec.ts` runs on both Chromium and Pixel 7.
+It asserts that the one default-collapsed `#analysisSettings` disclosure belongs
+to step 02 before Analyze. The threshold/epsilon ranges, A image-grid setting,
+and existing local-search/review/candidate/restore controls each retain one ID
+there. Optional B review and its 1–3 call limit stay visible beside the method
+choice; provider settings remain nearby. Known-edge calibration and exports
+remain in step 03.
+
+The suite checks that opening settings, changing provider, switching review
+consent, and choosing a call limit do not start analysis or transmit data, even
+with restored synthetic keys. A genuine ONNX run then exercises both moved
+ranges, exact 0.001-step values, stale candidate/automatic-adjustment provenance
+invalidation, fresh local search, candidate adoption, and exact restore. The
+probability and rectification diagnostic records remain unchanged throughout
+those manual operations. A markerless failure fixture verifies that recovery
+opens the step-02 settings, while missing-key recovery still opens API settings.
+
+Collapsed-page and expanded-step-02 screenshots are retained at 1280 px desktop
+and 320/393 px mobile widths, including real candidates and nested review/record
+details. Horizontal-overflow assertions also check visible control bounds.
+These are CI runtime assertions and screenshot outputs, not evidence produced
+by test discovery alone. The existing one-click and stage-level tests are kept.
+
 | Flow | Assertions |
 | --- | --- |
 | AI-textured L-shape, desktop and Pixel 7 | Genuine inference timing and pinned model hash; bounded threshold/epsilon search; real candidate overlays; exact 0.501 mm epsilon survives the HTML range, candidate application, polygon diagnostics, and JSON provenance |
 | Before/after | The prior image is decodable; restoring recovers exact vertices, holes, area, calibration, settings, and provenance; candidate list remains usable |
-| Build identity | Header, tuning record, diagnostic export, geometry provenance, and DXF comment agree on `0.3.0-dev.2+<short-sha>` or `+local`; full source commit agrees with the displayed short SHA |
+| Build identity | Header, tuning record, diagnostic export, geometry provenance, and DXF comment agree on `0.3.0-dev.3+<short-sha>` or `+local`; full source commit agrees with the displayed short SHA |
 | Cancellation and repetition | A deterministic same-turn start/duplicate-start/stop sequence retains prior geometry and provenance; repeated runs do not accumulate old attempts; source changes clear comparison, candidates, review state and exports; a new source receives genuine fresh ONNX inference |
 | Invalid manual settings | Deliberately corrupting numeric UI bounds creates collapsed geometry or empty foreground; recovery reuses the original genuine mask and stays within supported settings; ambiguous results retain the previous geometry until manual selection |
 | Known hole miss | The legacy hole fixture still reports its real model miss and truth discrepancy; tuning does not hide hole/semantic-accuracy warnings |
@@ -120,8 +145,8 @@ Prepare assets using the repository's normal setup, then run:
 ```sh
 npm test
 npm run build
-npx playwright test tests/browser/unified-analysis.spec.ts tests/browser/auto-tune.spec.ts --project=chromium
-npx playwright test tests/browser/unified-analysis.spec.ts tests/browser/auto-tune.spec.ts --project=mobile
+npx playwright test tests/browser/unified-analysis.spec.ts tests/browser/analysis-settings.spec.ts tests/browser/auto-tune.spec.ts --project=chromium
+npx playwright test tests/browser/unified-analysis.spec.ts tests/browser/analysis-settings.spec.ts tests/browser/auto-tune.spec.ts --project=mobile
 ```
 
 The standard `npm run test:browser` includes this file. The existing CI workflow

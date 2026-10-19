@@ -347,3 +347,23 @@
 
 .export-notice:empty { display: none; }
 .export-notice.error { color: #955536; }
+
+/* Analysis parameters belong to step 02; result correction/export stay in 03. */
+.analysis-settings { margin-top: 18px; border: 1px solid var(--lab-line); border-radius: 10px; background: #fafbf5; min-width: 0; }
+.analysis-settings > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 15px; min-height: 48px; padding: 12px 16px; font-size: 11px; color: #536348; cursor: pointer; }
+.analysis-settings > summary::before { content: '+'; font-size: 16px; }
+.analysis-settings[open] > summary::before { content: '−'; }
+.analysis-settings > summary .details-caption { margin-left: auto; font-size: 10px; font-weight: 400; color: var(--lab-muted); }
+.analysis-settings-content { padding: 0 16px 16px; min-width: 0; }
+.manual-analysis-settings { border-top: 1px solid var(--lab-line); padding-top: 17px; }
+.manual-analysis-settings h3 { font-size: 12px; margin: 0 0 8px; }
+.analysis-grid-settings { margin: 16px 0; }
+.analysis-grid-settings > summary { min-height: 44px; font-size: 11px; color: #536348; }
+.analysis-grid-settings .grid-field { max-width: 190px; margin: 10px 0 0; }
+.analysis-settings .tune-panel { margin: 16px 0 0; }
+@media (max-width: 520px) {
+  .analysis-settings > summary { padding: 12px; }
+  .analysis-settings > summary .details-caption { margin-left: 0; font-size: 9px; }
+  .analysis-settings-content { padding: 0 12px 12px; }
+  .analysis-settings .tune-panel { padding: 13px; }
+}

@@ -1,10 +1,10 @@
 # Isolated automatic-adjustment beta
 
-Release line: **0.3.0-dev.2**. This is a beta of the existing measurement app, not a replacement for the production URL.
+Release line: **0.3.0-dev.3**. This is a beta of the existing measurement app, not a replacement for the production URL.
 
 ## Source and delivery
 
-- Production repository: `check5004/scrap-vector-lab`; production `main` remains `e28c9c9490b54023528a5410a9943511a847255d` for this release.
+- Production repository: `check5004/scrap-vector-lab`; production `main` and its Pages deployment are managed separately from this beta.
 - Development source branch: `beta/auto-threshold-20261019` in that repository. No merge or update to production `main` is part of this beta.
 - Distribution repository: `check5004/scrap-vector-lab-beta`.
 - Beta Pages path: `/scrap-vector-lab-beta/`; production path stays `/scrap-vector-lab/`.
@@ -13,13 +13,13 @@ Release line: **0.3.0-dev.2**. This is a beta of the existing measurement app, n
 - Both Pages artifact upload and deployment are gated on repository **and** `main`: only `check5004/scrap-vector-lab-beta` can deploy this workflow. Running the source branch cannot deploy production.
 - Future beta updates repeat source review → new source-branch commit → exact distribution copy + updated mapping → tests/container checks → beta Pages. Production promotion requires separate user approval and an explicitly reviewed production deployment change. This beta workflow must not be blindly merged into production.
 
-`SCRAP_SOURCE_COMMIT` is set from the verified mapping and passed into both Vite and Docker. The screen, diagnostic JSON, measurement JSON, SVG metadata, and DXF comment all use `0.3.0-dev.2+<7-character source SHA>` and the same full source SHA. A local, uncommitted build is honestly labeled `+local`. Increment `dev.1`, `dev.2`, etc. for a new reviewed development iteration; distinct CI corrections within an iteration are distinguished by source SHA.
+`SCRAP_SOURCE_COMMIT` is set from the verified mapping and passed into both Vite and Docker. The screen, diagnostic JSON, measurement JSON, SVG metadata, and DXF comment all use `0.3.0-dev.3+<7-character source SHA>` and the same full source SHA. A local, uncommitted build is honestly labeled `+local`. Increment `dev.1`, `dev.2`, etc. for a new reviewed development iteration; distinct CI corrections within an iteration are distinguished by source SHA.
 
 ## Single analysis flow (dev.2)
 
 Choose a photo and either **クラウドAI（A）** (external structured polygon inference) or **この端末のAI（B）** (local U²-NetP segmentation), then press **解析する**. The same scene handles actual marker detection, board-plane correction, selected inference, and dimensions. A never visits B’s mask stage. A missing key opens adjacent setup without discarding the photo/method or running B. Initial loading is only “photo ready,” not a completed analysis. Switching A/B displays only that same-input method’s cached result or an explicit unanalysed state.
 
-B automatically runs bounded local adjustment in the normal flow, retaining its pre-adjustment comparison and restore operation in details. Its optional **LLMで画像との一致も確認** setting is off by default. When enabled, provider, image transmission, paid use, and maximum calls are disclosed beside the single Analyze action; the app does not require another per-stage start. The disclosure and maximum calls are captured at that start. Key/provider changes abort the run. Advanced manual controls remain in collapsed diagnostics for troubleshooting, not as mandatory workflow steps. Main Analyze overrides hidden expert step mode so it cannot stall waiting for a hidden Next button.
+B automatically runs bounded local adjustment in the normal flow, retaining its pre-adjustment comparison and restore operation in details. Its optional **LLMで画像との一致も確認** setting is off by default. When enabled, provider, image transmission, paid use, and maximum calls are disclosed beside the single Analyze action; the app does not require another per-stage start. The disclosure and maximum calls are captured at that start. Key/provider changes abort the run. Advanced manual controls remain in the collapsed step-02 analysis settings for troubleshooting, not as mandatory workflow steps. Main Analyze overrides hidden expert step mode so it cannot stall waiting for a hidden Next button.
 
 Computation has its own running/complete/error/cancel state and Cancel button. Playback pause/replay/skip affects only presentation. A failed/cancelled rerun retains a clearly labelled prior completed result for the same input; source/calibration changes invalidate cached results. Retry requires a new explicit click and never silently resends. On a first run that stops after a valid B contour has already completed, that same actual partial contour remains visible in the scene, metrics and exports, with an explicit unfinished-stage warning and `pipeline_completion` metadata. Review attempt/charge records remain even when a prior measurement is restored.
 
@@ -54,3 +54,7 @@ The original synthetic 40 mm hole can remain entirely filled at every tested thr
 ## Validation
 
 Unit tests exercise adversarial real-valued masks, bounded search, invalid/full/empty inputs, topology, thin/small material, deterministic results, cancellation, strict LLM responses, provider routing, no-secret diagnostics, and limited calls. Browser tests use real ArUco and ONNX on delivered sample pixels; provider-only tests explicitly use synthetic credentials and mock responses. CI also runs tests against the actual Docker/nginx container, including runtime MIME and model hashes. See [test coverage and verification limits](AUTO_TUNE_TESTING.md).
+
+## dev.3 placement refinement
+
+Step **02 · 解析方法を選ぶ** contains the default-closed **解析の詳細設定**: B foreground threshold and epsilon, local recovery/search/candidate comparison and restore, expert optional LLM review, and A's grid spacing. The primary optional B review switch and call cap remain visible beside method selection. Opening or closing these controls never starts processing or sends a photo. Normal one-click analysis needs no additional interaction. Result-only known-edge correction, editing, dimensions and exports remain in step **03**. Diagnostic stage buttons and processing logs stay in the separate closed diagnostic section.
