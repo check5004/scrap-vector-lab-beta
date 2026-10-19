@@ -249,6 +249,24 @@ test('known-edge correction scales A and B dimension labels only, retaining all 
   }
 });
 
+test('corrected dimension captions distinguish corrected lengths from the unchanged photo and grid', () => {
+  for (const method of ['A', 'B'] as const) {
+    const f = fixture(); f.begin(method); f.calibrate(); f.journey.setGeometry(f.polygon); f.journey.inspect('dimensions');
+    const caption = f.host.querySelector('.journey-stage-description'), original = caption.textContent;
+    f.journey.setMeasurementScale(2);
+    assert.match(caption.textContent, /既知の上面寸法を基準に、各辺の表示寸法を補正/);
+    assert.match(caption.textContent, /写真・輪郭・グリッドはマーカーの基準スケールのまま/);
+    assert.match(caption.textContent, /誤差は残ります/);
+    assert.doesNotMatch(caption.textContent, /各辺を、マーカーの基準スケールでミリ表示|各辺を、基準スケールからミリに換算/);
+    assert.match(f.host.querySelector('.journey-scene').attributes.get('aria-label')!, /各辺の表示寸法を補正/);
+    f.journey.setMeasurementScale(1);
+    assert.equal(caption.textContent, original);
+    f.journey.setMeasurementScale(2); f.journey.setGeometry(f.polygon);
+    assert.equal(caption.textContent, original);
+    f.journey.destroy();
+  }
+});
+
 test('measurement correction is absolute, accepts inclusive bounds, and resets exactly without accumulating scale', () => {
   const f = fixture(); f.begin('A'); f.calibrate(); f.journey.setGeometry(f.polygon); f.journey.inspect('dimensions');
   const original = dimensions(f.host).children.map(node => Number(node.children[2].dataset.mm));
@@ -327,6 +345,42 @@ test('analysis results and measurement correction respect a user pause instead o
 function referenceHighlight(host: Element) {
   return host.querySelector('#journeyOverlay').children.find(node => node.attributes.get('data-reference-edge-highlight') === 'true')!;
 }
+
+test('reference badges avoid all visible dimension labels on desktop and mobile without hiding or moving measurements', () => {
+  const rect = (element: Element) => ({
+    x: Number(element.attributes.get('x')), y: Number(element.attributes.get('y')),
+    width: Number(element.attributes.get('width')), height: Number(element.attributes.get('height')),
+  });
+  // This 150 mm top edge becomes 300 mm after correction, matching the reviewed
+  // screenshot. Its top badge also tests viewport clamping on narrow screens.
+  const polygon: Geometry = { outer: [{ x: 20, y: 20 }, { x: 170, y: 20 }, { x: 170, y: 65 }, { x: 90, y: 65 }, { x: 90, y: 120 }, { x: 20, y: 120 }], holes: [] };
+  for (const [width, height] of [[900, 510], [360, 280], [320, 280]]) {
+    const f = fixture();
+    Object.assign(f.host.querySelector('.journey-scene'), { clientWidth: width, clientHeight: height });
+    f.begin('A'); f.calibrate(); f.journey.setGeometry(polygon); f.journey.inspect('dimensions');
+    for (const scale of [1, 2, 4]) {
+      f.journey.setMeasurementScale(scale);
+      const before = geometryPresentation(f.host);
+      const labels = () => dimensions(f.host).children.map(node => ({ display: node.style.display, box: rect(node.children[1]), text: node.children[2].textContent, length: node.children[2].dataset.mm }));
+      const originalLabels = labels();
+      for (let edge = 0; edge < polygon.outer.length; edge++) {
+        f.journey.setReferenceEdge(edge);
+        const badge = rect(referenceHighlight(f.host).children[2]);
+        assert.equal(referenceHighlight(f.host).children[3].textContent, `E${edge + 1}`);
+        assert.ok(badge.x >= 8 && badge.x + badge.width <= width - 8);
+        assert.ok(badge.y >= 8 && badge.y + badge.height <= height - 30);
+        for (const node of dimensions(f.host).children.filter(node => node.style.display !== 'none')) {
+          const label = rect(node.children[1]);
+          assert.ok(badge.x + badge.width + 6 <= label.x || badge.x >= label.x + label.width + 6 || badge.y + badge.height + 6 <= label.y || badge.y >= label.y + label.height + 6,
+            `${width}px E${edge + 1} at scale ${scale} overlaps ${node.dataset.edgeId}`);
+        }
+        assert.deepEqual(labels(), originalLabels);
+        assert.deepEqual(geometryPresentation(f.host), before);
+      }
+    }
+    f.journey.destroy();
+  }
+});
 
 test('reference edge follows the same unscaled photo mapping in every real stage, even after dimension correction', () => {
   const f = fixture(); const token = f.begin('A'); f.calibrate(); f.journey.setGeometry(f.polygon, token);

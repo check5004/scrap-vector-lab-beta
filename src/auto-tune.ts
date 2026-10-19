@@ -278,7 +278,7 @@ function evaluate(context: ThresholdContext, mask: MaskResult, board: Board, thr
   if (fit.iou < 0.95) warnings.push('Simplified geometry differs noticeably from the selected binary region. Check thin bridges, notches, and holes.');
   if (holeAgreement < 0.9) warnings.push('Simplification materially changes at least one traced hole; a lower epsilon may retain its shape better.');
   if (boundary.distance > Math.max(1, resolution)) warnings.push('Simplification moves part of the sampled boundary by more than the review tolerance. Check narrow features and notches even when overall region overlap is high.');
-  if (fit.stride > 1 || boundary.sampled) warnings.push('Fidelity diagnostics use deterministic samples; sub-sample features may be missed.');
+  if (fit.stride > 1 || boundary.sampled) warnings.push('細い形状は検証で見落とす場合があります。写真と照合してください。');
   const safe = !nearlyFull && discarded <= 0.05 && !context.borderPixels && edgeClearance >= 2 && context.stability >= 0.95 && fit.iou >= 0.95 && holeAgreement >= 0.9 && boundary.distance <= Math.max(1, resolution);
   return { id, threshold, epsilon, geometry, rawGeometry: raw, score,
     metrics: { foregroundFraction: context.foregroundPixels / mask.probabilities.length, foregroundPixels: context.foregroundPixels,

@@ -78,11 +78,23 @@ test('default B is source-only until one Analyze click runs real inference and l
   await expect(page.locator('#exportJson')).toBeDisabled();
   await expect(page.locator('[data-journey-step="markers"]')).toHaveCount(0);
   await expect(page.locator('[data-journey-step="mask"]')).toHaveCount(0);
+  await expect(page.locator('#exportStatus')).toHaveText('');
+  // Capture the normal first-use layout before any diagnostic details or
+  // analysis interaction changes the page or scroll position.
+  await page.screenshot({ path: info.outputPath('one-click-initial-collapsed-viewport.png') });
+  await page.screenshot({ path: info.outputPath('one-click-initial-collapsed-full-page.png'), fullPage: true });
   await page.locator('#analyze').click();
   await complete(page, 'B');
   await expect(page.locator('#advancedDiagnostics')).not.toHaveAttribute('open', '');
   await expect(page.locator('[data-journey-step="mask"]')).toHaveCount(1);
+  const primaryStatus = await page.locator('#status').textContent();
+  const analysisSummary = await page.locator('#analysisSummary').textContent();
   const output = await download<Measurement>(page);
+  await expect(page.locator('#exportStatus')).toContainText('JSON');
+  await expect(page.locator('#status')).toHaveText(primaryStatus!);
+  await expect(page.locator('#analysisSummary')).toHaveText(analysisSummary!);
+  await expect(page.locator('#analysisSummary')).toHaveAttribute('data-state', 'complete');
+  await expect(page.locator('#analysisSummary')).toHaveAttribute('data-method', 'B');
   expect(output.provenance.method).toBe('U2NetP-ONNX-WASM');
   expect(output.provenance.model_sha256).toBe(modelHash);
   await expectGeometry(page, output);
@@ -91,6 +103,10 @@ test('default B is source-only until one Analyze click runs real inference and l
   expect(tuning.local.scoring).toBe('heuristic_not_accuracy');
   expect(tuning.llm.status).toBe('not_executed');
   await expect(page.locator('#warnings')).toContainText('穴');
+  await expect(page.locator('#warnings')).not.toContainText('Fidelity diagnostics use deterministic samples; sub-sample features may be missed.');
+  await page.locator('#journeySkip').click();
+  await expect(page.locator('#journeyOverlay .journey-dimensions')).toHaveCSS('opacity', '1');
+  await expect(page.locator('#journeyOverlay [data-contour="simplified"]')).toHaveCSS('opacity', '1');
   await page.screenshot({ path: info.outputPath('one-click-real-B-dimensions.png'), fullPage: true });
   const report = await download<Diagnostic>(page, '#debugExport');
   const neural = report.stages.find(stage => stage.id === 'probability')!;
@@ -144,13 +160,17 @@ test('same-image A/B switching restores matching cached metrics and journey; cha
   const api = await mockProvider(page, 'openrouter', 'shape');
   await openSource(page); await page.locator('#analyze').click(); await complete(page, 'B');
   const b = await download<Measurement>(page);
+  await expect(page.locator('#exportStatus')).toContainText('JSON');
   await page.locator('#methodA').check(); await expect(page.locator('#area')).toHaveText('—');
+  await expect(page.locator('#exportStatus')).toHaveText('');
   await configureKey(page); await page.locator('#analyze').click(); await complete(page, 'A');
   const a = await download<Measurement>(page); expect(a.outer_vertices_mm).not.toEqual(b.outer_vertices_mm);
   const requests: string[] = []; page.on('request', request => requests.push(request.url()));
   for (const [method, measurement] of [['B', b], ['A', a], ['B', b]] as const) {
     await page.locator(`#method${method}`).check();
+    await expect(page.locator('#exportStatus')).toHaveText('');
     const cached = await download<Measurement>(page);
+    await expect(page.locator('#exportStatus')).toContainText('JSON');
     expect(cached.outer_vertices_mm).toEqual(measurement.outer_vertices_mm);
     expect(cached.provenance).toEqual(measurement.provenance);
     await expectGeometry(page, cached);
@@ -182,7 +202,9 @@ test('same-image A/B switching restores matching cached metrics and journey; cha
   await expect(page.locator('[data-apply-candidate]').first()).toBeEnabled();
   await page.locator('#methodA').check(); await page.locator('[data-apply-candidate]').first().click(); await assertB();
   expect(api.inferenceCalls()).toBe(1); expect(requests).toEqual([]);
+  await expect(page.locator('#exportStatus')).toContainText('JSON');
   await openDetailsFor(page, '[data-sample="notched"]'); await page.locator('[data-sample="notched"]').click(); await sourceReady(page);
+  await expect(page.locator('#exportStatus')).toHaveText('');
   for (const method of ['A', 'B']) {
     await page.locator(`#method${method}`).check();
     await expect(page.locator('#area')).toHaveText('—'); await expect(page.locator('#exportJson')).toBeDisabled();

@@ -255,6 +255,13 @@ test('cancelled and repeated local runs preserve prior geometry; a new source re
   test.skip(info.project.name === 'mobile', 'Full repeated two-inference matrix runs on desktop'); test.setTimeout(330_000);
   await openSample(page); await infer(page);
   const before = await downloadJSON<Measurement>(page, '#exportJson');
+  await page.locator('#journeySkip').click();
+  await expect(page.locator('#journey-root')).toHaveAttribute('data-stage', 'dimensions');
+  const contour = page.locator('#journeyOverlay [data-contour="simplified"]');
+  const beforeContour = await contour.getAttribute('data-geometry-mm');
+  const beforeLabels = await page.locator('#journeyOverlay [data-mm]').evaluateAll(nodes => nodes.map(node => ({ mm: node.getAttribute('data-mm'), text: node.textContent })));
+  const beforeWarnings = await page.locator('#warnings').textContent();
+  expect(beforeContour).not.toBeNull(); expect(beforeLabels.length).toBeGreaterThan(0);
   // Same-event-loop clicks deterministically reach the search yield; do not mock
   // its clock, candidate loop, real mask or abort signal.
   await page.evaluate(() => {
@@ -266,6 +273,19 @@ test('cancelled and repeated local runs preserve prior geometry; a new source re
   await expect(page.locator('#tuneStatus')).toContainText('前の計測結果は変更せず');
   const cancelled = await tuning(page); expect(cancelled.local.stoppedReason).toBe('cancelled');
   const retained = await downloadJSON<Measurement>(page, '#exportJson'); sameGeometry(retained, before); expect(retained.provenance).toEqual(before.provenance);
+  // Cancelling an extra diagnostic search must preserve the already completed
+  // scene as well as its export; it is not a first-run, partially obtained result.
+  await expect(page.locator('#journey-root')).toHaveAttribute('data-processing', 'cancelled');
+  await expect(page.locator('#journey-root')).toHaveAttribute('data-stage', 'dimensions');
+  await expect(contour).toHaveAttribute('data-geometry-mm', beforeContour!);
+  await expect(contour).not.toHaveAttribute('d', '');
+  await expect(contour).toHaveCSS('opacity', '1');
+  await expect(page.locator('#journeyOverlay .journey-dimensions')).toHaveCSS('opacity', '1');
+  expect(await page.locator('#journeyOverlay [data-mm]').evaluateAll(nodes => nodes.map(node => ({ mm: node.getAttribute('data-mm'), text: node.textContent })))).toEqual(beforeLabels);
+  await expect(page.locator('#journeyOverlay [data-mm]:visible').first()).toBeVisible();
+  await expect(page.locator('#warnings')).toHaveText(beforeWarnings!);
+  await expect(page.locator('#warnings')).not.toContainText(/解析の途中で停止|未完了の工程/);
+  await expect(page.locator('#status')).not.toContainText('未完了の工程');
   const first = await search(page), second = await search(page);
   expect(new Set(second.local.attempts.map(attempt => attempt.id)).size).toBe(second.local.attempts.length);
   expect(second.local.attempts.length).toBeLessThanOrEqual(80);

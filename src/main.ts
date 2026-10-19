@@ -380,6 +380,7 @@ const fmt = (v: number, d = 1) =>
     minimumFractionDigits: d,
   });
 function status(s: string, error = false) {
+  $("exportStatus").textContent = "";
   $("analysisSummary").textContent = s;
   $("analysisProgress").textContent = s;
   $("status").textContent = s;
@@ -583,6 +584,7 @@ function renderCanvas() {
   editor.innerHTML = html;
 }
 function render() {
+  $("exportStatus").textContent = "";
   renderCalibration();
   renderCanvas();
   document
@@ -751,6 +753,11 @@ function makeGridStage(input: HTMLCanvasElement) {
 }
 async function guarded(fn: () => Promise<void>, previous?: AnalysisSnapshot) {
   if (busy) return;
+  // A diagnostic search can be cancelled without replacing any result. Keep
+  // that already-completed result distinct from a new, partially completed
+  // one-click analysis; preserve the search/cost diagnostics in either case.
+  const resultsAtStart = { ...geometries };
+  const epochAtStart = sourceEpoch;
   pipelineAbort = new AbortController();
   pipelineFinishMessage = undefined;
   setBusy(true);
@@ -770,20 +777,25 @@ async function guarded(fn: () => Promise<void>, previous?: AnalysisSnapshot) {
       : e instanceof Error
         ? e.message
         : String(e);
-    const partial=!previous&&!!geometries[active]&&validateGeometry(geometries[active]!).valid;
+    const validRetained=!previous&&!!geometries[active]&&validateGeometry(geometries[active]!).valid;
+    const unchanged=validRetained&&sourceEpoch===epochAtStart&&geometries[active]===resultsAtStart[active];
+    const partial=validRetained&&!unchanged;
     if(previous)restoreAnalysis(previous, "前回の解析結果を保持しています。",true);
+    else if(unchanged){
+      if(active!=="C")showMethodResult(active);
+    }
     else if(partial){
       provenance[active]={...provenance[active],pipeline_completion:aborted?"partial_cancelled":"partial_failed"};
       warnings[active]=[...(warnings[active]??[]),"解析の途中で停止しました。表示はここまでに取得した輪郭で、後続の調整・評価は完了していません。"];
       if(active!=="C")showMethodResult(active);
     }
-    const retained=previous?" 前回の解析結果を保持しています。":partial?" ここまでに取得した輪郭を表示しています。未完了の工程があります。":"";
+    const retained=previous||unchanged?" 前回の解析結果を保持しています。":partial?" ここまでに取得した輪郭を表示しています。未完了の工程があります。":"";
     $("analysisFailure").hidden=false;
     $("analysisFailureMessage").textContent=message+retained;
     status(message+retained, !aborted);
     $("analysisSummary").dataset.state = aborted ? "cancelled" : "error";
     failureNeedsKey=e instanceof ProviderError && (e.stage==="authentication"||e.stage==="availability"||[401,402,403].includes(e.status??0));
-    if(previous||partial) {
+    if(previous||unchanged||partial) {
       journey.setProcessing(message+retained,aborted?"cancelled":"error",journeyToken);
     } else if (aborted) {
       journey.cancel("処理を中止しました。新しく処理するまで説明は再開しません。");
@@ -1743,9 +1755,11 @@ for (const [id, type, ext, fn] of [
         type,
         ext,
       );
-      status(`${ext.toUpperCase()}を実寸mmで書き出しました${currentCalibration(active)?"（既知の上面辺による計測値補正を適用）":""}。`);
+      $("exportStatus").classList.remove("error");
+      $("exportStatus").textContent=`${ext.toUpperCase()}を実寸mmで書き出しました${currentCalibration(active)?"（既知の上面辺による計測値補正を適用）":""}。`;
     } catch (e) {
-      status(String(e), true);
+      $("exportStatus").classList.add("error");
+      $("exportStatus").textContent=String(e);
     }
   };
 $("print").onclick = () => {

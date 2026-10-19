@@ -344,3 +344,6 @@
 .unified-app .close-key-settings { margin-top: 18px; background: #eaf0e2; border-color: #c5d3b9; font-size: 11px; }
 
 .analysis-live-progress { font-size:12px; line-height:1.6; color:#25452d; background:#eef2e8; padding:10px 12px; border-radius:8px; margin:10px 0 0; }
+
+.export-notice:empty { display: none; }
+.export-notice.error { color: #955536; }

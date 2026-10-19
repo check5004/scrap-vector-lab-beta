@@ -49,6 +49,7 @@ function geometryPath(geometry: Geometry, project: (point: Point) => Point): str
 }
 interface MarkerNode { corners: Point[]; polygon: SVGPolygonElement; label: SVGTextElement; index: number }
 interface EdgeNode { edge: DimensionEdge; line: SVGLineElement; group: SVGGElement; box: SVGRectElement; text: SVGTextElement; title: SVGTitleElement }
+interface LabelBox { x: number; y: number; width: number; height: number }
 interface Transition { from: number; to: number; start: number; duration: number }
 
 /**
@@ -462,9 +463,11 @@ export class MeasurementJourney {
     this.stageTitle.textContent = this.method === 'A' && stage === 5 ? 'AIが読み取った輪郭' : TITLES[stage];
     this.stageDescription.textContent = this.method === 'A' && stage === 5
       ? 'GPT-6 Lunaが実際に返した頂点を、そのまま輪郭として重ねています。外周や穴が写真と一致するか確認してください。'
-      : this.method === 'A' && stage === 6
-        ? 'GPT-6 Lunaが返した輪郭の各辺を、マーカーの基準スケールでミリ表示しています。厚みや高低差による誤差は残ります。'
-        : DESCRIPTIONS[stage];
+      : stage === 6 && this.measurementScale !== 1
+        ? '既知の上面寸法を基準に、各辺の表示寸法を補正しています。写真・輪郭・グリッドはマーカーの基準スケールのままです。厚みや高低差による誤差は残ります。'
+        : this.method === 'A' && stage === 6
+          ? 'GPT-6 Lunaが返した輪郭の各辺を、マーカーの基準スケールでミリ表示しています。厚みや高低差による誤差は残ります。'
+          : DESCRIPTIONS[stage];
     if (stage === 1 && this.markerReport) {
       const report = this.markerReport;
       this.stageDescription.textContent = report.missingIds.length || report.duplicateIds.length ? `実際の検出結果を表示しています。${report.missingIds.length ? `未検出: ID ${report.missingIds.join('・')}。` : ''}${report.duplicateIds.length ? `重複: ID ${report.duplicateIds.join('・')}。` : ''}` : DESCRIPTIONS[1];
@@ -596,10 +599,11 @@ export class MeasurementJourney {
     this.rawPath.style.opacity = String(this.rawGeometry && planeMap ? contourProgress * lerp(1, 0.15, clamp01(p - 5)) : 0);
     this.simplifiedPath.style.opacity = this.vertexGroup.style.opacity = this.dimensionGroup.style.opacity = String(this.geometry && planeMap ? clamp01(p - 5) : 0);
     if (this.rawGeometry && planeMap && contourProgress > 0) this.rawPath.setAttribute('d', geometryPath(this.rawGeometry, geometryMap)); else this.rawPath.setAttribute('d', '');
+    let dimensionBoxes: LabelBox[] = [];
     if (this.geometry && planeMap && p > 5) {
       this.simplifiedPath.setAttribute('d', geometryPath(this.geometry, geometryMap));
       for (const vertex of this.vertices) { const point = geometryMap(vertex.point); vertex.element.setAttribute('cx', String(point.x)); vertex.element.setAttribute('cy', String(point.y)); }
-      this.positionDimensions(geometryMap, viewport);
+      dimensionBoxes = this.positionDimensions(geometryMap, viewport);
     } else this.simplifiedPath.setAttribute('d', '');
     if (this.geometry && planeMap && this.referenceEdgeIndex !== null) {
       // Static fallback can still show the original photograph before the flat
@@ -607,12 +611,12 @@ export class MeasurementJourney {
       const referenceMap = staticFallback && p < 2 && this.homography
         ? (point: Point) => transformPoint(projectPoint(this.homography!.rectified_to_source_h, { x: point.x / this.board!.width * this.flatCanvas.width, y: point.y / this.board!.height * this.flatCanvas.height }), view)
         : geometryMap;
-      this.positionReferenceEdge(referenceMap, viewport);
+      this.positionReferenceEdge(referenceMap, viewport, dimensionBoxes);
     }
     this.detail.textContent = p >= 5.999 && this.geometry ? this.detail.dataset.dimensions || '' : p >= 3.999 && this.mask ? `${this.mask.width} × ${this.mask.height} · 閾値 ${this.threshold.toFixed(2)}` : p >= 2.999 ? `${this.board.width} × ${this.board.height} mm 基準` : this.markerReport && p >= 0.999 ? `${this.markerReport.markers.length} マーカー検出` : `${this.sourceCanvas.width} × ${this.sourceCanvas.height} px`;
   }
 
-  private positionReferenceEdge(map: (point: Point) => Point, viewport: { width: number; height: number }): void {
+  private positionReferenceEdge(map: (point: Point) => Point, viewport: { width: number; height: number }, dimensionBoxes: LabelBox[]): void {
     const index = this.referenceEdgeIndex!, ring = this.geometry!.outer;
     const from = ring[index], to = ring[(index + 1) % ring.length];
     const a = map(from), b = map(to);
@@ -627,15 +631,32 @@ export class MeasurementJourney {
     let nx = -(b.y - a.y) / (length || 1), ny = (b.x - a.x) / (length || 1);
     const center = map(ring.reduce((sum, point) => ({ x: sum.x + point.x / ring.length, y: sum.y + point.y / ring.length }), { x: 0, y: 0 }));
     if ((middle.x - center.x) * nx + (middle.y - center.y) * ny < 0) { nx *= -1; ny *= -1; }
-    const x = Math.max(width / 2 + 8, Math.min(viewport.width - width / 2 - 8, middle.x + nx * 24));
-    const y = Math.max(21, Math.min(viewport.height - 43, middle.y + ny * 24));
+    const clampX = (x: number) => Math.max(width / 2 + 8, Math.min(viewport.width - width / 2 - 8, x));
+    const clampY = (y: number) => Math.max(21, Math.min(viewport.height - 43, y));
+    // Keep the E badge outside the ordinary length label. Clamping near a scene
+    // boundary can bring them back together, so test actual visible label boxes
+    // and use the nearest free position rather than hiding either measurement.
+    const offset = dimensionBoxes.length ? 64 : 24;
+    let x = clampX(middle.x + nx * offset), y = clampY(middle.y + ny * offset);
+    const clear = (cx: number, cy: number) => dimensionBoxes.every(box =>
+      cx + width / 2 + 6 <= box.x || cx - width / 2 >= box.x + box.width + 6 || cy + 13 + 6 <= box.y || cy - 13 >= box.y + box.height + 6);
+    if (!clear(x, y)) {
+      const xs = [x, width / 2 + 8, viewport.width - width / 2 - 8, ...dimensionBoxes.flatMap(box => [box.x - width / 2 - 6, box.x + box.width + width / 2 + 6])].map(clampX);
+      const ys = [y, 21, viewport.height - 43, ...dimensionBoxes.flatMap(box => [box.y - 19, box.y + box.height + 19])].map(clampY);
+      let best: Point | undefined, distance = Infinity;
+      for (const cx of xs) for (const cy of ys) {
+        const candidateDistance = (cx - x) ** 2 + (cy - y) ** 2;
+        if (candidateDistance < distance && clear(cx, cy)) { best = { x: cx, y: cy }; distance = candidateDistance; }
+      }
+      if (best) { x = best.x; y = best.y; }
+    }
     for (const [key, value] of Object.entries({ x: x - width / 2, y: y - 13, width })) this.referenceEdgeBox.setAttribute(key, String(value));
     this.referenceEdgeLabel.textContent = label;
     this.referenceEdgeLabel.setAttribute('x', String(x)); this.referenceEdgeLabel.setAttribute('y', String(y + 4));
   }
 
-  private positionDimensions(map: (point: Point) => Point, viewport: { width: number; height: number }): void {
-    const occupied: { x: number; y: number; width: number; height: number }[] = [];
+  private positionDimensions(map: (point: Point) => Point, viewport: { width: number; height: number }): LabelBox[] {
+    const occupied: LabelBox[] = [];
     const maximum = viewport.width < 500 ? 7 : 12;
     let shown = 0;
     const center = this.geometry!.outer.reduce((sum, point) => ({ x: sum.x + point.x / this.geometry!.outer.length, y: sum.y + point.y / this.geometry!.outer.length }), { x: 0, y: 0 });
@@ -661,5 +682,6 @@ export class MeasurementJourney {
     const correction = this.measurementScale === 1 ? '' : ` · 既知辺補正 ×${Number(this.measurementScale.toFixed(4))}`;
     this.detail.dataset.dimensions = (shown < this.edges.length ? `${shown} / ${this.edges.length} 辺を表示 · 全辺は計測結果へ` : `${shown} 辺 · mm`) + correction;
     this.dimensionGroup.dataset.shownEdges = String(shown); this.dimensionGroup.dataset.totalEdges = String(this.edges.length);
+    return occupied;
   }
 }
