@@ -1,0 +1,51 @@
+[
+  {
+    "sample": "l-shape",
+    "raw_count": 5,
+    "unique_ids": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "hamming_distances": [
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  {
+    "sample": "notched",
+    "raw_count": 4,
+    "unique_ids": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "hamming_distances": [
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  {
+    "sample": "trapezoid-hole",
+    "raw_count": 4,
+    "unique_ids": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "hamming_distances": [
+      0,
+      0,
+      0,
+      0
+    ]
+  }
+]

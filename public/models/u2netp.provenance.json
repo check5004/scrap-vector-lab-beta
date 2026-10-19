@@ -1,0 +1,20 @@
+{
+  "name": "U2NetP",
+  "file": "u2netp.onnx",
+  "bytes": 4574861,
+  "sha256": "309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8",
+  "md5": "8e83ca70e441ab06c318d82300c84806",
+  "source_url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx",
+  "upstream_model_project": "https://github.com/xuebinqin/U-2-Net",
+  "upstream_model_repository_license": "Apache-2.0",
+  "rembg_code_license": "MIT",
+  "license_file": "../licenses/U2-Net-Apache-2.0.txt",
+  "input_shape": [
+    1,
+    3,
+    320,
+    320
+  ],
+  "verification_date": "2026-10-15",
+  "note": "Faithful unmodified rembg release model. Small general salient-object model; a test circular hole is filled. See docs/RUNTIME_RESEARCH.md."
+}

@@ -1,0 +1,266 @@
+{
+  "schema_version": 1,
+  "synthetic": true,
+  "name": "ai-notched",
+  "title": "AI texture / 凹型 / uneven light",
+  "preset_mode": "A4_LANDSCAPE_250x170",
+  "board_size_mm": {
+    "width_mm": 250,
+    "height_mm": 170
+  },
+  "scale_mm_per_px": 0.1,
+  "shape_type": "notched",
+  "outer_vertices_mm": [
+    {
+      "id": 1,
+      "x": 35.0,
+      "y": 30.0
+    },
+    {
+      "id": 2,
+      "x": 90.0,
+      "y": 30.0
+    },
+    {
+      "id": 3,
+      "x": 90.0,
+      "y": 85.0
+    },
+    {
+      "id": 4,
+      "x": 155.0,
+      "y": 85.0
+    },
+    {
+      "id": 5,
+      "x": 155.0,
+      "y": 30.0
+    },
+    {
+      "id": 6,
+      "x": 215.0,
+      "y": 30.0
+    },
+    {
+      "id": 7,
+      "x": 215.0,
+      "y": 140.0
+    },
+    {
+      "id": 8,
+      "x": 35.0,
+      "y": 140.0
+    }
+  ],
+  "holes_vertices_mm": [],
+  "edges_mm": [
+    {
+      "from": 1,
+      "to": 2,
+      "length_mm": 55.0,
+      "angle_deg": 0.0
+    },
+    {
+      "from": 2,
+      "to": 3,
+      "length_mm": 55.0,
+      "angle_deg": 90.0
+    },
+    {
+      "from": 3,
+      "to": 4,
+      "length_mm": 65.0,
+      "angle_deg": 0.0
+    },
+    {
+      "from": 4,
+      "to": 5,
+      "length_mm": 55.0,
+      "angle_deg": -90.0
+    },
+    {
+      "from": 5,
+      "to": 6,
+      "length_mm": 60.0,
+      "angle_deg": 0.0
+    },
+    {
+      "from": 6,
+      "to": 7,
+      "length_mm": 110.0,
+      "angle_deg": 90.0
+    },
+    {
+      "from": 7,
+      "to": 8,
+      "length_mm": 180.0,
+      "angle_deg": 180.0
+    },
+    {
+      "from": 8,
+      "to": 1,
+      "length_mm": 110.0,
+      "angle_deg": -90.0
+    }
+  ],
+  "hole_edges_mm": [],
+  "total_area_mm2": 16225.0,
+  "analytic_area_mm2": 16225.0,
+  "dictionary": "DICT_4X4_50",
+  "marker_side_mm": 12.0,
+  "marker_corners_image_px": [
+    {
+      "id": 0,
+      "corners": [
+        [
+          269.47199390567215,
+          103.75492236760459
+        ],
+        [
+          326.8816945987667,
+          109.18862795332609
+        ],
+        [
+          318.82774312142897,
+          167.28679912758383
+        ],
+        [
+          261.2970816119346,
+          161.82066097061147
+        ]
+      ]
+    },
+    {
+      "id": 1,
+      "corners": [
+        [
+          1532.2793042963474,
+          223.2769378688125
+        ],
+        [
+          1590.591454203862,
+          228.79605834571134
+        ],
+        [
+          1585.2224772925401,
+          287.6102648520156
+        ],
+        [
+          1526.7854911167242,
+          282.0580144253214
+        ]
+      ]
+    },
+    {
+      "id": 2,
+      "corners": [
+        [
+          1446.3088341102227,
+          1143.1183347974857
+        ],
+        [
+          1506.5735369373722,
+          1149.1664041224883
+        ],
+        [
+          1500.8324912020325,
+          1212.0564211624844
+        ],
+        [
+          1440.4344446463797,
+          1205.9713888615856
+        ]
+      ]
+    },
+    {
+      "id": 3,
+      "corners": [
+        [
+          141.57771540342728,
+          1012.1776035528666
+        ],
+        [
+          200.87839873521176,
+          1018.1289254209811
+        ],
+        [
+          192.27087282295795,
+          1080.2203739781412
+        ],
+        [
+          132.84112493739588,
+          1074.2328966317555
+        ]
+      ]
+    }
+  ],
+  "reference_points_image_px": [
+    [
+      318.82774312142897,
+      167.28679912758383
+    ],
+    [
+      1526.7854911167242,
+      282.0580144253214
+    ],
+    [
+      1446.3088341102227,
+      1143.1183347974857
+    ],
+    [
+      200.87839873521176,
+      1018.1289254209811
+    ]
+  ],
+  "homography_board_mm_to_image_px": [
+    [
+      4.765987964747189,
+      -0.7268188094902386,
+      317.46434098175416
+    ],
+    [
+      0.44877500862837144,
+      4.801260918899684,
+      166.57143108076042
+    ],
+    [
+      -2.9592030344016054e-05,
+      -0.0001790442172074921,
+      0.9957237029427658
+    ]
+  ],
+  "homography_image_px_to_board_mm": [
+    [
+      0.20668326346008611,
+      0.028651796458318037,
+      -70.68942574871804
+    ],
+    [
+      -0.01941074546308209,
+      0.2042965243128932,
+      -27.987427456895528
+    ],
+    [
+      2.6521370027198346e-06,
+      3.7586708032970967e-05,
+      0.9971613273774234
+    ]
+  ],
+  "photo_size_px": [
+    1800,
+    1350
+  ],
+  "seed": 921,
+  "mask_path": "samples/ai-notched.mask.png",
+  "rectified_path": "samples/ai-notched.rectified.png",
+  "limitations": [
+    "Synthetic planar scene; no lens distortion or real manufacturing uncertainty.",
+    "The circle is represented by a 128-sided polygon; analytic circle area is stored separately.",
+    "Use photo pixels for detection/inference; ground truth is for evaluation only.",
+    "AI generation supplies steel appearance only; this is not an untouched AI photograph or a camera capture. Board, valid markers, silhouette, contact shadow, table, and perspective are controlled renderer output."
+  ],
+  "fixture_kind": "ai-texture-composite",
+  "appearance_source": "AI-generated steel texture + controlled geometric composite",
+  "texture_id": "notched",
+  "texture_provenance_path": "samples/ai-texture-provenance.json"
+}

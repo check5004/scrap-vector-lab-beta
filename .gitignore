@@ -1,0 +1,21 @@
+node_modules/
+dist/
+test-results/
+playwright-report/
+.env*
+!.env.example
+__pycache__/
+.DS_Store
+
+# Generated from pinned, verified sources; never commit weights/runtime binaries.
+public/models/*.onnx
+public/vendor/*.wasm
+public/vendor/*.mjs
+public/samples/*.png
+public/samples/*.jpg
+public/print/*.png
+.venv/
+
+# Separate container browser evidence
+test-results-container/
+playwright-report-container/

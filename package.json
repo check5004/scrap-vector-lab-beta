@@ -1,0 +1,26 @@
+{
+  "name": "scrap-vector-lab",
+  "version": "0.3.0-dev.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "preview": "node scripts/serve.mjs",
+    "test": "node scripts/check-vendor.mjs && node --import tsx --test tests/*.test.ts",
+    "test:browser": "playwright test",
+    "test:all": "npm test && npm run build && npm run test:browser",
+    "assets": "node scripts/fetch-assets.mjs"
+  },
+  "dependencies": {
+    "js-aruco2": "2.0.0",
+    "onnxruntime-web": "1.23.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "@types/node": "24.10.1",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3",
+    "vite": "7.2.2"
+  }
+}

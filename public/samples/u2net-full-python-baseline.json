@@ -1,0 +1,33 @@
+{
+  "note": "Bounded full U2Net alternative test. Python ONNX CPU on exact generated rectified images, same preprocessing and .5 threshold. No truth used by AI. Full weights remain outside public site.",
+  "model_bytes": 175997641,
+  "model_sha256": "8d10d2f3bb75ae3b6d527c77944fc5e7dcd94b29809d47a739a7a728a912b491",
+  "results": [
+    {
+      "sample": "trapezoid-hole",
+      "elapsed_s": 2.281,
+      "mask_iou": 0.916894029224949,
+      "mask_area_mm2": 16646.510000000002,
+      "holes_area_mm2": [],
+      "hole_center_probability": 1.0,
+      "hole_center_region_probability_range": [
+        0.9999998807907104,
+        1.0
+      ]
+    },
+    {
+      "sample": "l-shape",
+      "elapsed_s": 1.544,
+      "mask_iou": 0.9917110579034962,
+      "mask_area_mm2": 12926.77,
+      "holes_area_mm2": []
+    },
+    {
+      "sample": "notched",
+      "elapsed_s": 0.775,
+      "mask_iou": 0.9858028920483827,
+      "mask_area_mm2": 16493.33,
+      "holes_area_mm2": []
+    }
+  ]
+}

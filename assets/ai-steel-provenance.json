@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "generated_utc": "2026-10-15",
+  "source": "OpenAI built-in imagegen tool",
+  "model": "Not reported by the built-in tool",
+  "inputs": "Text prompts only; no reference photographs, personal data, or third-party images supplied.",
+  "intended_use": "Steel material maps for controlled geometric test fixtures, not evidence of real-world metrology accuracy.",
+  "rights_note": "AI-generated project assets. No third-party stock-image license is asserted. See the repository license for distribution terms; provenance does not warrant copyrightability or exclusivity.",
+  "textures": [
+    {
+      "id": "l-shape",
+      "prompt": "Use case: photorealistic-natural\nAsset type: photoreal steel surface texture for an engineering image-measurement demonstration. This is a material asset that will be mapped onto an exactly defined L-shaped plate, not a finished measurement photograph.\nPrimary request: generate one square, high-resolution overhead photograph of the broad flat face of a real dark-gray mild steel scrap sheet. Steel fills the entire frame edge to edge; do not show its outer silhouette.\nMaterials/textures: naturally irregular fine diagonal scratches, light scuffs from workshop use, subtle mill scale, a few slightly brighter rub marks, honest photographic microtexture. Broad subdued reflection of diffuse daylight, with a soft brighter area near the upper left and dark steel at the lower right. Overall medium-dark blue-charcoal gray with gentle tonal variation; no white-hot glare, no rust.\nComposition/framing: camera exactly perpendicular to one flat continuous metal plane, no perspective distortion, no depth of field, no border. Looks like a cropped real industrial material photograph rather than a graphic or procedural noise.\nConstraints: no objects, no plate edges, no holes, no paper, no table, no markers, no letters, no logos, no numbers, no text, no watermark. Fully opaque.",
+      "width_px": 1254,
+      "height_px": 1254,
+      "original_sha256": "f783ad5b4849cee24f014176e30271640e55296e60dd1fc59a6ff73cc4f3667c",
+      "asset_sha256": "f31fea800da6b5091d3092e17d1bd4921c430fd40f85c9648101e490ae380169",
+      "asset_bytes": 215326,
+      "format": "image/jpeg",
+      "encoding": "JPEG, quality 60, progressive; no color or content edits"
+    },
+    {
+      "id": "notched",
+      "prompt": "Use case: photorealistic-natural\nAsset type: steel material photograph for a calibrated computer-vision demonstration; the asset will be mapped onto a known notched steel outline by a separate renderer.\nPrimary request: one square, close-up overhead photograph of a real flat medium-dark cold-rolled steel sheet. Steel surface fills the entire frame; no plate edges visible.\nMaterials/textures: authentic fine horizontal rolling lines with many scattered thin scratches at different angles, sparse worn scuffs, tiny oily variations, mild desaturated blue-gray mill scale. A large soft reflection stripe passes diagonally across the upper third but never becomes white, with a subdued neutral-gray region below. Small random believable defects, flat smooth sheet, no bulky dents.\nComposition/framing: top-down camera perpendicular to a single flat material plane, sharply focused surface throughout, no silhouette or surrounding context, natural photographic irregularity rather than procedural repeated noise.\nLighting/mood: ordinary workshop diffuse daylight, restrained reflective metal sheen, medium-to-dark tones so the material is distinct from white A4 paper in its later use.\nConstraints: no objects, no paper, no board, no table, no holes, no markers, no labels, no numbers, no logos, no text, no watermark. Fully opaque.",
+      "width_px": 1254,
+      "height_px": 1254,
+      "original_sha256": "e001125236e3a278381f6c584059b5041f1622323835c522b567ae8357457a20",
+      "asset_sha256": "bf7bb84727ee996174e2566914263bfdaa2e9669a55ce7283a34d1d034f29b7a",
+      "asset_bytes": 214943,
+      "format": "image/jpeg",
+      "encoding": "JPEG, quality 60, progressive; no color or content edits"
+    },
+    {
+      "id": "trapezoid-hole",
+      "prompt": "Use case: photorealistic-natural\nAsset type: photographic metal texture for an exact-geometry plate-measurement demo. The renderer will later map it onto a trapezoid-shaped steel plate with a round hole.\nPrimary request: one square overhead macro photograph of the face of a single flat dark-gray steel scrap sheet, filling the complete frame edge to edge without revealing its outline.\nMaterials/textures: dark cool steel with complex authentic random scratches, some broad faint arcs made by abrasive polishing and finer straight scoring, patches of worn mill scale, subtle metallic gray highlights. A low-contrast wide soft reflection runs vertically down the right quarter. A few warmer gray discolorations, no rusty orange. True photographic surface detail, smooth planar sheet with shallow imperfections.\nComposition/framing: close top-down view, camera exactly perpendicular, surface flat and sharply focused everywhere, no perspective distortion, no border.\nLighting/mood: natural soft light from a workshop window, restrained metal reflections, medium-dark charcoal tones, no white-hot glare.\nConstraints: only the material surface; no sheet edges, no holes, no table, no paper, no markers, no logos, no text, no labels, no tools, no watermark. Fully opaque.",
+      "width_px": 1254,
+      "height_px": 1254,
+      "original_sha256": "eea72cb7a72793dc6b8fb7975f5c70b44e7ead9b9d300c286f97cd7d6da0008f",
+      "asset_sha256": "76f4a1b12926bbedfa236e2f47a06679aabe7aef1391d0258306c8ca6d190862",
+      "asset_bytes": 249174,
+      "format": "image/jpeg",
+      "encoding": "JPEG, quality 60, progressive; no color or content edits"
+    }
+  ]
+}

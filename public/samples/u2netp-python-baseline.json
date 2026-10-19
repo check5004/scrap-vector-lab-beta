@@ -1,0 +1,29 @@
+{
+  "note": "Python ONNX CPU on exact generated rectified images; faithful rembg normalization. Independent baseline, not browser end-to-end evidence. No truth used by AI.",
+  "model": "u2netp.onnx",
+  "threshold": 0.5,
+  "onnxruntime_version": "1.31.0",
+  "results": [
+    {
+      "sample": "l-shape",
+      "elapsed_s": 0.301,
+      "mask_iou": 0.9942875747580417,
+      "mask_area_mm2": 12899.2,
+      "holes_area_mm2": []
+    },
+    {
+      "sample": "notched",
+      "elapsed_s": 0.245,
+      "mask_iou": 0.9914663186684188,
+      "mask_area_mm2": 16397.65,
+      "holes_area_mm2": []
+    },
+    {
+      "sample": "trapezoid-hole",
+      "elapsed_s": 0.217,
+      "mask_iou": 0.9164909933791535,
+      "mask_area_mm2": 16654.27,
+      "holes_area_mm2": []
+    }
+  ]
+}

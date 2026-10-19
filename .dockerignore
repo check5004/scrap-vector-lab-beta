@@ -1,0 +1,15 @@
+node_modules
+dist
+.git
+.env*
+public/models/*.onnx
+public/vendor
+public/samples/*.png
+public/samples/*.jpg
+public/print/*.png
+test-results
+playwright-report
+
+# Separate container browser evidence
+test-results-container/
+playwright-report-container/
