@@ -11,6 +11,7 @@ import { projectPoint, transformPoint } from '../src/journey-math.ts';
 // DOM below models state, not pixels; browser tests own native rendering checks.
 const sourceURL = new URL('../src/journey.ts', import.meta.url);
 const source = (await readFile(sourceURL, 'utf8')).replace("import './journey.css';", '')
+  .replaceAll("from './curves'", `from '${new URL('../src/curves.ts', import.meta.url)}'`)
   .replaceAll("from './geometry'", `from '${new URL('../src/geometry.ts', import.meta.url)}'`)
   .replaceAll("from './journey-math'", `from '${new URL('../src/journey-math.ts', import.meta.url)}'`);
 const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
@@ -463,4 +464,20 @@ test('reference edge stays on source pixels when projective CSS is unavailable',
   assert.equal(Number(line.attributes.get('x2')), b.x); assert.equal(Number(line.attributes.get('y2')), b.y);
   assert.equal(referenceHighlight(f.host).style.display, '');
   f.journey.destroy();
+});
+
+test('automatic curve final scene uses arc length, preserves calibration reference and clears stale controls',()=>{
+ const f=fixture(true),token=f.begin('B');f.calibrate();f.journey.setGeometry(f.polygon,token);
+ const curve=structuredClone(f.polygon) as import('../src/curves.ts').CurveGeometry;
+ curve.outer[0].outgoing={x:45,y:5};curve.outer[1].incoming={x:95,y:5};
+ assert.equal(f.journey.setCurveGeometry(curve,token),true);f.journey.skip();
+ const path=f.host.querySelector('#journeyOverlay').children.find(n=>n.attributes.get('data-contour')==='simplified')!;
+ assert.deepEqual(JSON.parse(path.dataset.curveGeometryMm),curve);
+ const first=dimensions(f.host).children[0].children[2];assert.match(first.textContent,/弧 /);const length=Number(first.dataset.mm);assert.ok(length>100);
+ f.journey.setMeasurementScale(2,token);assert.equal(Number(first.dataset.mm),length*2);
+ assert.equal(f.journey.setReferenceEdge(0,token),true);
+ const reference=referenceHighlight(f.host);assert.deepEqual(JSON.parse(reference.dataset.edgePointsMm),f.polygon.outer.slice(0,2));
+ assert.equal(f.journey.setCurveGeometry(undefined,token),true);assert.equal(dimensions(f.host).children[0].children[2].textContent,'200.0 mm');
+ f.journey.setCurveGeometry(curve,token);f.journey.setGeometry(f.polygon,token);assert.equal(path.dataset.curveGeometryMm,undefined);
+ assert.equal(f.journey.setCurveGeometry(curve,token-1),false);f.journey.destroy();
 });

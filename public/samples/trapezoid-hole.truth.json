@@ -1625,7 +1625,7 @@
   "rectified_path": "samples/trapezoid-hole.rectified.png",
   "limitations": [
     "Synthetic planar scene; no lens distortion or real manufacturing uncertainty.",
-    "The circle is represented by a 128-sided polygon; analytic circle area is stored separately.",
+    "Curved boundaries are polygonal truth samples (outer 4 points); analytic area is stored separately.",
     "Use photo pixels for detection/inference; ground truth is for evaluation only."
   ]
 }

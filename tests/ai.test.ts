@@ -84,7 +84,7 @@ test('OpenRouter uses exact fixed endpoints, unauthenticated model catalog and s
   assert.equal(call.init.credentials, 'omit'); assert.equal(call.init.redirect, 'error');
   assert.equal(call.init.referrerPolicy, 'no-referrer'); assert.equal(call.init.cache, 'no-store');
  }
- assert.deepEqual(result, { geometry: { outer: shape.outer_vertices_mm, holes: shape.holes_vertices_mm }, surfaceAssessment: shape.surface_assessment, model: 'openai/gpt-6-luna', requestId: 'request-safe-123', provider: 'openrouter' });
+ assert.deepEqual(result, { curveRepresentation:'legacy-polygon', geometry: { outer: shape.outer_vertices_mm, holes: shape.holes_vertices_mm }, surfaceAssessment: shape.surface_assessment, model: 'openai/gpt-6-luna', requestId: 'request-safe-123', provider: 'openrouter' });
  assert.equal(progress.length, 3);
  assert.ok(progress.every(message => !message.includes(KEY)));
 });
@@ -421,4 +421,49 @@ test('a 200 authentication error or invalid auth envelope prevents catalog and p
   assert.equal(calls.length, 1);
   t.mock.restoreAll();
  }
+});
+
+const nativeShape = () => ({...structuredClone(shape),shape_type:'mixed-line-cubic',outer_vertices_mm:shape.outer_vertices_mm.map(p=>({...p,incoming:null as null|{x:number;y:number},outgoing:null as null|{x:number;y:number}})),holes_vertices_mm:shape.holes_vertices_mm.map(r=>r.map(p=>({...p,incoming:null,outgoing:null})))});
+test('native A image schema carries cubic controls and distinguishes genuine straight response from legacy',async t=>{
+ const s=nativeShape();s.outer_vertices_mm[0].outgoing={x:35,y:2};s.outer_vertices_mm[1].incoming={x:75,y:2};
+ fakeFetch(t,routerResponses(json(chat(JSON.stringify(s)))));const r=await run();
+ assert.equal(r.curveRepresentation,'native-bezier');assert.equal(r.curveGeometry?.outer[0].outgoing?.y,2);
+ assert.ok(r.geometry.outer.length>4);assert.equal(r.geometry.holes.length,1);
+ t.mock.restoreAll();fakeFetch(t,routerResponses(json(chat(JSON.stringify(nativeShape())))));const straight=await run();
+ assert.equal(straight.curveRepresentation,'native-bezier');assert.ok(straight.curveGeometry);assert.equal(straight.geometry.outer.length,4);
+});
+test('native A rejects one-sided closing control, mixed vertex schemas, extra/nonfinite controls and out-of-board controls',async t=>{
+ for(const kind of ['closing','missing','extra','outside','infinite']){
+  const s=nativeShape();const p=s.outer_vertices_mm[0];
+  if(kind==='closing')p.incoming={x:10,y:20};
+  if(kind==='missing')delete (p as Partial<typeof p>).outgoing;
+  if(kind==='extra')p.outgoing={x:30,y:10,extra:true} as {x:number;y:number};
+  if(kind==='outside'){p.outgoing={x:30,y:-1};s.outer_vertices_mm[1].incoming={x:70,y:10};}
+  if(kind==='infinite')p.outgoing={x:Infinity,y:10};
+  fakeFetch(t,routerResponses(json(chat(JSON.stringify(s)))));
+  await assert.rejects(run(),assertCode(kind==='outside'?'OUT_OF_BOUNDS':'INVALID_GEOMETRY_SCHEMA'));t.mock.restoreAll();
+ }
+});
+test('native A schema requires nullable paired controls and instruction prioritizes straight edges',async t=>{
+ const calls=fakeFetch(t,routerResponses());await run();const p=JSON.parse(String(calls[2].init.body));
+ const item=p.response_format.json_schema.schema.properties.outer_vertices_mm.items;
+ assert.deepEqual(item.required,['x','y','incoming','outgoing']);assert.equal(item.additionalProperties,false);
+ assert.ok(item.properties.incoming.anyOf.some((s:{type:string})=>s.type==='null'));
+ assert.match(p.messages[0].content[0].text,/Prioritize long straight measurement edges/);
+ assert.match(p.messages[0].content[0].text,/final vertex connects back to the first/);
+});
+
+test('native A rejects a control-driven crossing even when anchor polygon is valid',async t=>{
+ const s=nativeShape();s.holes_vertices_mm=[];s.outer_vertices_mm[0].outgoing={x:30,y:160};s.outer_vertices_mm[1].incoming={x:80,y:160};
+ fakeFetch(t,routerResponses(json(chat(JSON.stringify(s)))));await assert.rejects(run(),assertCode('INVALID_GEOMETRY'));
+});
+test('native A supports last-to-first curve without duplicated closing anchor',async t=>{
+ const s=nativeShape();s.outer_vertices_mm[3].outgoing={x:2,y:75};s.outer_vertices_mm[0].incoming={x:2,y:35};
+ fakeFetch(t,routerResponses(json(chat(JSON.stringify(s)))));const r=await run();assert.equal(r.curveGeometry?.outer.length,4);assert.equal(r.curveGeometry?.outer[3].outgoing?.x,2);assert.ok(r.geometry.outer.length>4);
+});
+
+test('native A straight-first collapses bounded negligible cubic but retains broad arc',async t=>{
+ const s=nativeShape();s.outer_vertices_mm[0].outgoing={x:35,y:9.8};s.outer_vertices_mm[1].incoming={x:75,y:9.8};
+ fakeFetch(t,routerResponses(json(chat(JSON.stringify(s)))));const r=await run();
+ assert.equal(r.curveSimplification?.linearizedEdges,1);assert.equal(r.curveGeometry?.outer[0].outgoing,undefined);assert.equal(r.curveRepresentation,'native-bezier');
 });

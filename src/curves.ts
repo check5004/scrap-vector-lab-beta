@@ -5,6 +5,13 @@ export interface CurveGeometry { outer: CurveVertex[]; holes: CurveVertex[][] }
 export const CURVE_TOLERANCE_MM = 0.01;
 export const curveRings = (g: CurveGeometry) => [g.outer, ...g.holes];
 export const copyCurve = (g: CurveGeometry): CurveGeometry => structuredClone(g);
+/** Scale anchors and both controls together around the calibration anchor, exactly once. */
+export function transformCurveGeometry(g:CurveGeometry,scaleFactor:number,anchor:Point):CurveGeometry {
+  if(!Number.isFinite(scaleFactor)||scaleFactor<=0||!Number.isFinite(anchor.x)||!Number.isFinite(anchor.y))throw Error('Invalid curve calibration.');
+  const transform=(p:Point):Point=>({x:anchor.x+(p.x-anchor.x)*scaleFactor,y:anchor.y+(p.y-anchor.y)*scaleFactor});
+  const ring=(r:CurveVertex[])=>r.map(p=>({...transform(p),...(p.incoming?{incoming:transform(p.incoming)}:{}),...(p.outgoing?{outgoing:transform(p.outgoing)}:{})}));
+  return {outer:ring(g.outer),holes:g.holes.map(ring)};
+}
 const mix = (a: Point, b: Point): Point => ({x:(a.x+b.x)/2,y:(a.y+b.y)/2});
 export function curvePath(ring: CurveVertex[]): string {
   return `M ${ring[0].x} ${ring[0].y} `+ring.map((a,i)=>{
@@ -61,16 +68,16 @@ export function mergeNearby(g:CurveGeometry,tolerance:number):{geometry:CurveGeo
   return validateCurve(out).valid?{geometry:out,removed}:{geometry:copyCurve(g),removed:0};
 }
 export function curveJson(g:CurveGeometry,board:BoardSize,provenance:Record<string,unknown>={}){
-  return JSON.stringify({schema_version:'2.0-beta',units:'mm',coordinate_system:'image_x_right_y_down',board_size_mm:board,geometry:g,measurement:curveMetrics(g),provenance:{...provenance,app_build:APP_BUILD},warning:'Manually edited Bezier estimate. Area and topology use flattened curves; not certified manufacturing geometry.'},null,2);
+  return JSON.stringify({schema_version:'2.0-beta',units:'mm',coordinate_system:'image_x_right_y_down',board_size_mm:board,geometry:g,measurement:curveMetrics(g),provenance:{...provenance,app_build:APP_BUILD},warning:'Estimated Bezier geometry (automatic or manually adjusted). Area and topology use flattened curves; not certified manufacturing geometry.'},null,2);
 }
 export function curveSvg(g:CurveGeometry,board:BoardSize,provenance:Record<string,unknown>={}){
   curveMetrics(g);const controls=curveRings(g).flatMap(r=>r.flatMap(p=>[p,...(p.incoming?[p.incoming]:[]),...(p.outgoing?[p.outgoing]:[])]));
   const b=bbox(controls),x=Math.min(0,b.minX),y=Math.min(0,b.minY),w=Math.max(board.width,b.maxX)-x,h=Math.max(board.height,b.maxY)-y;
   const metadata=curveJson(g,board,provenance).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]!));
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}mm" height="${h}mm" viewBox="${x} ${y} ${w} ${h}"><metadata>${metadata}</metadata><desc>Manually edited cubic Bezier geometry; millimetres; not certified manufacturing geometry.</desc><path d="${curveRings(g).map(curvePath).join(' ')}" fill="#c2b593" fill-rule="evenodd" stroke="#26382f" stroke-width="0.35"/></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}mm" height="${h}mm" viewBox="${x} ${y} ${w} ${h}"><metadata>${metadata}</metadata><desc>Estimated cubic Bezier geometry; millimetres; not certified manufacturing geometry.</desc><path d="${curveRings(g).map(curvePath).join(' ')}" fill="#c2b593" fill-rule="evenodd" stroke="#26382f" stroke-width="0.35"/></svg>`;
 }
 export function curveDxf(g:CurveGeometry,board:BoardSize){
-  curveMetrics(g);return `999\nBezier approximation; maximum chord deviation ${CURVE_TOLERANCE_MM} mm; manually edited estimate\n`+createDxf(flattenCurve(g),board);
+  curveMetrics(g);return `999\nBezier approximation; maximum chord deviation ${CURVE_TOLERANCE_MM} mm; estimated geometry\n`+createDxf(flattenCurve(g),board);
 }
 /** Local three-anchor quadratic fit represented losslessly as a cubic. No global smoothing. */
 export function fitLocalCurve(g:CurveGeometry,ringIndex:number,index:number,tolerance:number){
@@ -93,4 +100,16 @@ export function fitLocalCurve(g:CurveGeometry,ringIndex:number,index:number,tole
   if(error>tolerance)throw Error(`元の2辺からの誤差上限 ${error.toFixed(3)} mm が許容差を超えます。`);
   r.splice(index,1);if(!validateCurve(result).valid)throw Error('Curve candidate changes valid topology.');
   return {geometry:result,errorBoundMm:error};
+}
+
+/** Straight-first simplification bounded against the supplied cubic control hull, not a photograph. */
+export function linearizeNearlyStraightCurves(source:CurveGeometry,toleranceMm:number){
+  if(!Number.isFinite(toleranceMm)||toleranceMm<0||toleranceMm>10)throw Error('Line tolerance must be 0–10 mm.');
+  const geometry=copyCurve(source);let linearizedEdges=0;
+  for(const ring of curveRings(geometry))for(let i=0;i<ring.length;i++){
+    const a=ring[i],b=ring[(i+1)%ring.length];if(!a.outgoing&&!b.incoming)continue;
+    if(Math.max(pointToSegmentDistance(a.outgoing??a,a,b),pointToSegmentDistance(b.incoming??b,a,b))>toleranceMm)continue;
+    delete a.outgoing;delete b.incoming;linearizedEdges++;
+  }
+  return validateCurve(geometry).valid?{geometry,linearizedEdges}:{geometry:copyCurve(source),linearizedEdges:0};
 }

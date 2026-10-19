@@ -233,7 +233,7 @@
   "rectified_path": "samples/ai-l-shape.rectified.png",
   "limitations": [
     "Synthetic planar scene; no lens distortion or real manufacturing uncertainty.",
-    "The circle is represented by a 128-sided polygon; analytic circle area is stored separately.",
+    "Curved boundaries are polygonal truth samples (outer 6 points); analytic area is stored separately.",
     "Use photo pixels for detection/inference; ground truth is for evaluation only.",
     "AI generation supplies steel appearance only; this is not an untouched AI photograph or a camera capture. Board, valid markers, silhouette, contact shadow, table, and perspective are controlled renderer output."
   ],

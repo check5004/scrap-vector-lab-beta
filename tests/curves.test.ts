@@ -15,3 +15,12 @@ test('multiple repeated vertices normalize atomically while preserving input',()
 test('crossing cubic handles are rejected even when anchor polygon is valid',()=>{const g=rect();g.outer[0].outgoing={x:50,y:300};g.outer[1].incoming={x:50,y:300};assert.equal(validateCurve(g).valid,false);assert.throws(()=>curveSvg(g,{width:100,height:100}));assert.throws(()=>curveDxf(g,{width:100,height:100}));});
 test('fit rejects oversized work without mutating source',()=>{const g:CurveGeometry={outer:[{x:0,y:0},{x:2500,y:-250},{x:5000,y:0},{x:5000,y:1000},{x:0,y:1000}],holes:[]};const before=JSON.stringify(g);assert.throws(()=>fitLocalCurve(g,0,1,10),/区間が大きすぎ|許容差/);assert.equal(JSON.stringify(g),before);});
 test('calibration scales curve coordinates exactly once and lengths/areas follow scale',()=>{const g=rect();g.outer[0].outgoing={x:25,y:-20};g.outer[1].incoming={x:75,y:-20};const scale=1.5,anchor={x:10,y:20},transformed=structuredClone(g);for(const ring of [transformed.outer,...transformed.holes])for(const p of ring){for(const h of [p,p.incoming,p.outgoing])if(h){h.x=anchor.x+(h.x-anchor.x)*scale;h.y=anchor.y+(h.y-anchor.y)*scale;}}const a=curveMetrics(g),b=curveMetrics(transformed);assert.ok(Math.abs(b.outer_length_mm-a.outer_length_mm*scale)<.01);assert.ok(Math.abs(b.area_approx_mm2-a.area_approx_mm2*scale*scale)<1);assert.deepEqual(JSON.parse(curveJson(transformed,{width:100,height:100})).geometry,transformed);});
+
+test('calibration scales automatic anchors and both controls exactly once without mutation', async()=>{
+ const {transformCurveGeometry}=await import('../src/curves.ts');
+ const source={outer:[{x:10,y:10,outgoing:{x:20,y:5}},{x:50,y:10,incoming:{x:40,y:5}},{x:50,y:50},{x:10,y:50}],holes:[]};
+ const original=JSON.stringify(source),result=transformCurveGeometry(source,2,{x:10,y:10});
+ assert.deepEqual(result.outer[0],{x:10,y:10,outgoing:{x:30,y:0}});
+ assert.deepEqual(result.outer[1],{x:90,y:10,incoming:{x:70,y:0}});
+ assert.equal(JSON.stringify(source),original);
+});

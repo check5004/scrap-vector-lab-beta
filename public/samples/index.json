@@ -48,6 +48,22 @@
     "marker_corner_rms_error_px": 0.8788597673575034
   },
   {
+    "id": "circle-plate",
+    "title": "円形部材 / deterministic synthetic curve fixture",
+    "image": "samples/circle-plate.png",
+    "truth": "samples/circle-plate.truth.json",
+    "mask": "samples/circle-plate.mask.png",
+    "area_mm2": 9502.363684071639,
+    "marker_detection_verified": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "marker_corner_max_error_px": 1.0843677494049608,
+    "marker_corner_rms_error_px": 0.7242031004158255
+  },
+  {
     "id": "ai-l-shape",
     "title": "AI texture / L字型 / scratches",
     "image": "samples/ai-l-shape.jpg",

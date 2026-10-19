@@ -1,4 +1,6 @@
 import { openCurveEditor } from './curve-editor';
+import { autoFitGeometry } from './auto-curves';
+import { copyCurve, curveRings, curvePath, curveMetrics, flattenCurve, curveSvg, curveDxf, curveJson, validateCurve, transformCurveGeometry, type CurveGeometry } from './curves';
 import "./style.css";
 import "./auto-tune.css";
 import "./unified.css";
@@ -13,6 +15,7 @@ import { createKnownEdgeCalibration, transformMeasurementGeometry, calibrationCo
 import {
   type Geometry,
   type Point,
+  bbox,
   buildMeasurement,
   createSvg,
   createDxf,
@@ -84,6 +87,13 @@ const geometries: Partial<Record<Mode, Geometry>> = {},
   provenance: Partial<Record<Mode, Record<string, unknown>>> = {},
   warnings: Partial<Record<Mode, string[]>> = {};
 const calibrations: Partial<Record<Mode,KnownEdgeCalibration>> = {};
+type CurveCandidateState = {
+  source: Geometry; sourceSignature: string; epoch: number; revision: number;
+  geometry: CurveGeometry | null; rawGeometry?:Geometry; origin: 'dense-mask' | 'cloud-response' | 'manual';
+  diagnostics: Record<string, unknown>; showing: 'curve' | 'polygon'; cancelled: boolean; manual: boolean;
+};
+const curveCandidates: Partial<Record<Mode, CurveCandidateState>> = {};
+let curveRevision = 0;
 let failureNeedsKey = false;
 let calibrationUiSignature = "";
 let sourceEpoch = 0;
@@ -154,6 +164,8 @@ type AnalysisSnapshot = {
   provenance: Partial<Record<Mode,Record<string,unknown>>>; warnings: Partial<Record<Mode,string[]>>;
   mask?: MaskResult; maskUrl: string; threshold: number; epsilon: number;
   calibrations: Partial<Record<Mode,KnownEdgeCalibration>>;
+  curveCandidates: Partial<Record<Mode,CurveCandidateState>>;
+  automaticCurves:boolean; curveTolerance:number; minimumCurveLength:number;
 };
 function selectedMethod(): "A" | "B" {
   return $<HTMLInputElement>("methodA").checked ? "A" : "B";
@@ -232,14 +244,20 @@ function showMethodResult(method:"A"|"B") {
 }
 function captureAnalysis(): AnalysisSnapshot | undefined {
   if(!geometries[active]||!validateGeometry(geometries[active]!).valid)return;
-  return {epoch:sourceEpoch,active,geometries:structuredClone(geometries),provenance:structuredClone(provenance),warnings:structuredClone(warnings),calibrations:structuredClone(calibrations),mask,maskUrl,threshold:Number($<HTMLInputElement>("threshold").value),epsilon:Number($<HTMLInputElement>("epsilon").value)};
+  return {epoch:sourceEpoch,active,geometries:structuredClone(geometries),provenance:structuredClone(provenance),warnings:structuredClone(warnings),calibrations:structuredClone(calibrations),curveCandidates:structuredClone(curveCandidates),automaticCurves:$<HTMLInputElement>("automaticCurves").checked,curveTolerance:Number($<HTMLInputElement>("curveTolerance").value),minimumCurveLength:Number($<HTMLInputElement>("minimumCurveLength").value),mask,maskUrl,threshold:Number($<HTMLInputElement>("threshold").value),epsilon:Number($<HTMLInputElement>("epsilon").value)};
 }
 function restoreAnalysis(snapshot:AnalysisSnapshot, message:string, preserveReviewRecord=true) {
   if(snapshot.epoch!==sourceEpoch)return;
   const currentReview=preserveReviewRecord&&active==="B"&&tuneReview?structuredClone(tuneReview):undefined;
-  for(const m of ["A","B","C"] as Mode[]){delete geometries[m];delete provenance[m];delete warnings[m];delete calibrations[m];}
+  for(const m of ["A","B","C"] as Mode[]){delete geometries[m];delete provenance[m];delete warnings[m];delete calibrations[m];delete curveCandidates[m];}
   Object.assign(geometries,structuredClone(snapshot.geometries));Object.assign(provenance,structuredClone(snapshot.provenance));Object.assign(warnings,structuredClone(snapshot.warnings));Object.assign(calibrations,structuredClone(snapshot.calibrations));
+  for(const mode of ['A','B','C'] as Mode[]) {
+    const saved=snapshot.curveCandidates?.[mode], source=geometries[mode];
+    if(saved&&source&&saved.epoch===sourceEpoch&&saved.sourceSignature===JSON.stringify(source))
+      curveCandidates[mode]={...structuredClone(saved),source,revision:++curveRevision};
+  }
   mask=snapshot.mask;maskUrl=snapshot.maskUrl;
+  $<HTMLInputElement>("automaticCurves").checked=snapshot.automaticCurves;$<HTMLInputElement>("curveTolerance").value=String(snapshot.curveTolerance);$<HTMLInputElement>("minimumCurveLength").value=String(snapshot.minimumCurveLength);
   $<HTMLInputElement>("threshold").value=String(snapshot.threshold);$<HTMLInputElement>("epsilon").value=String(snapshot.epsilon);
   $("thresholdValue").textContent=snapshot.threshold.toFixed(3);$("epsilonValue").textContent=`${snapshot.epsilon.toFixed(2)} mm`;
   active=snapshot.active;
@@ -276,7 +294,7 @@ async function analyzeSelected() {
       else {
         prepareJourney(method);
         processing("同じ写真・基準寸法の検出と補正結果を再利用しています…");
-        debug.remove(["api","probability","binary","contours","polygon","tuning"]);
+        debug.remove(["api","probability","binary","contours","polygon","automatic-curves","tuning"]);
       }
       pipelineAbort!.signal.throwIfAborted();
       if(authorization.epoch!==sourceEpoch)throw new DOMException("入力が変更されました","AbortError");
@@ -404,11 +422,12 @@ function setBusy(v: boolean) {
   $<HTMLSelectElement>("preset").disabled = v;
   $<HTMLSelectElement>("provider").disabled = v;
   for (const id of [
-    "file", "cameraFile", "width", "height", "epsilon", "threshold", "gridstep",
+    "file", "cameraFile", "width", "height", "epsilon", "threshold", "gridstep", "automaticCurves", "curveTolerance", "minimumCurveLength",
   ])
     $<HTMLInputElement>(id).disabled = v;
 }
 function updateButtons() {
+  updateCurveButtons();
   $<HTMLButtonElement>("analyze").disabled = busy || !source || !!drawing || !!dragging;
   $("analyze").textContent = busy ? "解析中…" : "解析する";
   $<HTMLButtonElement>("retryAnalysis").disabled = busy || !source;
@@ -453,6 +472,7 @@ function resetResults() {
     delete provenance[m];
     delete warnings[m];
     delete calibrations[m];
+    delete curveCandidates[m];
   }
   mask = undefined;
   maskUrl = "";
@@ -482,6 +502,114 @@ function syncCalibrationDiagnostic() {
   debug.remove(["calibration"]);
   if(c)debug.record({id:"calibration",title:"既知の上面辺による計測値補正",details:{...c.provenance,photo_overlay_unchanged:true,physical_accuracy_tested:false}});
 }
+/** Candidates remain in the original board frame. Identity and an exact source
+ * snapshot prevent controls from leaking into a new run, source, or C edit. */
+function currentCurveCandidate(mode:Mode):CurveCandidateState|undefined {
+  const candidate=curveCandidates[mode], source=geometries[mode];
+  if(!candidate)return;
+  if(!source || candidate.source!==source || candidate.epoch!==sourceEpoch || candidate.sourceSignature!==JSON.stringify(source)) {
+    delete curveCandidates[mode];return;
+  }
+  return candidate;
+}
+function activeCurveGeometry(mode:Mode):CurveGeometry|undefined {
+  const c=currentCurveCandidate(mode);
+  return c?.geometry&&!c.cancelled&&c.showing==='curve'?c.geometry:undefined;
+}
+function measurementCurveGeometry(mode:Mode):CurveGeometry|undefined {
+  const g=activeCurveGeometry(mode), c=currentCalibration(mode);
+  return g?transformCurveGeometry(g,c?.scaleFactor??1,c?.anchor??{x:0,y:0}):undefined;
+}
+function readCurveSettings():{toleranceMm:number;minCurveLengthMm:number} {
+  const toleranceMm=Number($<HTMLInputElement>('curveTolerance').value),minCurveLengthMm=Number($<HTMLInputElement>('minimumCurveLength').value);
+  if(!Number.isFinite(toleranceMm)||toleranceMm<.1||toleranceMm>10||!Number.isFinite(minCurveLengthMm)||minCurveLengthMm<.5||minCurveLengthMm>100)throw Error('許容差は0.1〜10 mm、最小曲線長は0.5〜100 mmにしてください。');
+  return {toleranceMm,minCurveLengthMm};
+}
+function fitCurrentDenseCurve(raw:Geometry) {
+  const source=geometries.B;if(!source)return;
+  let settings:{toleranceMm:number;minCurveLengthMm:number};
+  try{settings=readCurveSettings();}catch{settings={toleranceMm:0,minCurveLengthMm:5};}
+  const result=autoFitGeometry(raw,{...settings,pixelSizeMm:mask?Math.max(board.width/mask.width,board.height/mask.height):undefined});
+  curveCandidates.B={source,sourceSignature:JSON.stringify(source),epoch:sourceEpoch,revision:++curveRevision,
+    geometry:result.geometry,rawGeometry:cloneGeometry(raw),origin:'dense-mask',diagnostics:{...result.diagnostics,requested_tolerance_mm:Number($<HTMLInputElement>('curveTolerance').value),requested_min_curve_length_mm:Number($<HTMLInputElement>('minimumCurveLength').value),source:'traceMask.rawGeometry_before_simplification',source_epoch:sourceEpoch,mask_threshold:provenance.B?.mask_threshold,epsilon_mm:provenance.B?.epsilon_mm,photo_accuracy_verified:false},
+    showing:$<HTMLInputElement>('automaticCurves').checked&&result.geometry?'curve':'polygon',cancelled:false,manual:false};
+  debug.record({id:'automatic-curves',title:'簡略化前の密なAI輪郭から自動曲線化',elapsedMs:result.diagnostics.elapsedMs,details:curveCandidates.B.diagnostics});
+}
+function updateCurveButtons() {
+  const candidate=currentCurveCandidate(active), available=!!candidate?.geometry&&!candidate.cancelled;
+  const locked=busy||!!drawing||!!dragging;
+  $<HTMLInputElement>('showDenseContour').disabled=locked||!candidate?.rawGeometry;
+  $<HTMLButtonElement>('showOriginalCurve').disabled=locked||!geometries[active];
+  $<HTMLButtonElement>('showAutomaticCurve').disabled=locked||!available;
+  $<HTMLButtonElement>('cancelAutomaticCurve').disabled=locked||!available;
+  $<HTMLButtonElement>('refineCurves').disabled=locked||!geometries[active]||!validateGeometry(geometries[active]!).valid;
+  $('showOriginalCurve').setAttribute('aria-pressed',String(!!geometries[active]&&!activeCurveGeometry(active)));
+  $('showAutomaticCurve').setAttribute('aria-pressed',String(!!activeCurveGeometry(active)));
+}
+function curveFallbackReason(reason:unknown):string {
+  const code=String(reason??'').split(':')[0];
+  const labels:Record<string,string>={operation_limit:'計算量の安全上限に達しました。',segment_limit:'必要な区間が多すぎます。許容差を少し広げると改善する場合があります。',input_limit:'輪郭の点数または穴の数が安全上限を超えています。',topology_uncertain:'曲線の交差・接触を安全に否定できませんでした。',topology_rejected:'曲線化で輪郭の向きや穴の関係が変わりました。',invalid_options:'許容差は0.1〜10 mm、最小曲線長は0.5〜100 mmにしてください。',invalid_input:'密な輪郭データが有効ではありません。',subdivision_limit:'安全な分割回数の上限に達しました。',numerical_precision:'指定された許容差では数値精度が足りません。'};
+  return labels[code]??'安全な曲線を作成できませんでした。詳細は診断記録に保存しています。';
+}
+function curveExportBounds(curve:CurveGeometry) {
+  const controls=curveRings(curve).flatMap(r=>r.flatMap(p=>[p,...(p.incoming?[p.incoming]:[]),...(p.outgoing?[p.outgoing]:[])])),b=bbox(controls),minX=Math.min(0,b.minX),minY=Math.min(0,b.minY),maxX=Math.max(board.width,b.maxX),maxY=Math.max(board.height,b.maxY);
+  return {minX,minY,maxX,maxY,width:maxX-minX,height:maxY-minY};
+}
+function renderCurveResult() {
+  const source=geometries[active],candidate=currentCurveCandidate(active),curve=activeCurveGeometry(active),preview=$<SVGSVGElement & HTMLElement>('resultCurvePreview');
+  preview.toggleAttribute('hidden',!source||!flatUrl);
+  preview.setAttribute('viewBox',`0 0 ${board.width} ${board.height}`);
+  preview.dataset.resultMode=active;
+  preview.dataset.revision=String(candidate?.revision??0);
+  preview.dataset.result=curve?'curve':'polygon';
+  preview.innerHTML=source&&flatUrl?`<image href="${flatUrl}" x="0" y="0" width="${board.width}" height="${board.height}" opacity="0.82"/><path data-result-outline="${curve?'curve':'polygon'}" d="${curve?curveRings(curve).map(curvePath).join(' '):allRings(source).map(ringPath).join(' ')}" fill="#234f3520" fill-rule="evenodd" stroke="#234f35" stroke-width="${board.width/600}"/>`:'';
+  if(candidate?.rawGeometry&&$<HTMLInputElement>('showDenseContour').checked)preview.insertAdjacentHTML('beforeend',`<path data-dense-outline d="${allRings(candidate.rawGeometry).map(ringPath).join(' ')}" fill="none" stroke="#d36a24" stroke-width="${board.width/900}" stroke-dasharray="${board.width/300} ${board.width/500}"/>`);
+  if(source){
+    const displayed=curve??source,rings=curveRings(displayed),metrics=curve?curveMetrics(curve):undefined,scale=currentCalibration(active)?.scaleFactor??1,font=Math.max(board.width/75,11*board.width/Math.max(250,preview.clientWidth));
+    const labels=rings.flatMap((ring,ri)=>ring.map((p,i)=>{
+      const q=ring[(i+1)%ring.length],length=metrics?.edges[ri][i].length_mm??Math.hypot(q.x-p.x,q.y-p.y),curved=!!(p.outgoing||q.incoming);
+      if(ri>0||length<board.width*.025)return '';
+      const c=p.outgoing??p,d=q.incoming??q,x=curved?(p.x+3*c.x+3*d.x+q.x)/8:(p.x+q.x)/2,y=curved?(p.y+3*c.y+3*d.y+q.y)/8:(p.y+q.y)/2;
+      return `<text data-result-edge="${ri},${i}" x="${x}" y="${y-font*.65}" font-size="${font}" fill="#234f35" stroke="#fff" stroke-width="${font*.25}" paint-order="stroke" text-anchor="middle">${ri?'H'+ri+'.':'E'}${i+1} · ${curved?'弧≈':''}${fmt(length*scale)} mm</text>`;
+    })).join('');preview.insertAdjacentHTML('beforeend',labels);
+    for(const [hi,hole] of displayed.holes.entries()){const b=bbox(hole);preview.insertAdjacentHTML('beforeend',`<text data-hole-label x="${(b.minX+b.maxX)/2}" y="${(b.minY+b.maxY)/2+font*.35}" font-size="${font}" fill="#234f35" stroke="#fff" stroke-width="${font*.2}" paint-order="stroke" text-anchor="middle">H${hi+1}</text>`);}
+    if($<HTMLDetailsElement>('measurementCalibration').open&&$<HTMLSelectElement>('calibrationEdge').value!==''){
+      const index=Number($<HTMLSelectElement>('calibrationEdge').value),p=source.outer[index],q=source.outer[(index+1)%source.outer.length];
+      if(p&&q)preview.insertAdjacentHTML('beforeend',`<path d="${allRings(source).map(ringPath).join(' ')}" fill="none" stroke="#888" stroke-width="${board.width/1200}" stroke-dasharray="1 1"/><line data-calibration-reference x1="${p.x}" y1="${p.y}" x2="${q.x}" y2="${q.y}" stroke="#d92778" stroke-width="${board.width/220}"/><text x="${(p.x+q.x)/2}" y="${(p.y+q.y)/2+font*1.2}" fill="#a4004c" font-size="${font}" stroke="#fff" stroke-width="${font*.25}" paint-order="stroke" text-anchor="middle">元のE${index+1} · 補正基準</text>`);
+    }
+  }
+  const result=$('automaticCurveResult');result.dataset.state=String(candidate?.diagnostics.status??(source?'unsupported':'idle'));
+  $('showOriginalCurve').textContent=candidate?.origin==='cloud-response'?'曲線の折線近似':'元の直線輪郭';
+  const count=curve?curveRings(curve).flatMap(r=>r.map((p,i)=>!!(p.outgoing||r[(i+1)%r.length].incoming))).filter(Boolean).length:0;
+  $('curveResultTitle').textContent=curve?(candidate?.manual?'微調整した曲線の結果':count?'直線優先の結果 · 曲線 '+count+'辺':'直線優先の結果 · 曲線0辺'):'元の直線輪郭';
+  let message=!source?'解析すると、この画面で写真と重ねて確認できます。':active==='A'&&!candidate?'Aの応答は旧形式の直線輪郭です。密な輪郭・曲線データがないため自動曲線化はできません。':active==='C'&&!candidate?'Cの手動輪郭を表示しています。元のAI曲線は引き継がず、必要な場合だけ微調整できます。':candidate?.cancelled?'曲線化を取り消し、元の直線輪郭を出力します。新しい解析では設定に従って再計算します。':candidate&&!candidate.geometry?`自動曲線化を見送り、元の直線輪郭を保持しました。${curveFallbackReason(candidate.diagnostics.reason)}`:curve?'表示中の直線・曲線を面積・外周長とSVG / JSON / DXFに反映しています。':'比較中: 元の直線輪郭を表示・出力しています。「曲線の結果」で戻せます。';
+  if(source&&!$<HTMLInputElement>('automaticCurves').checked&&!candidate?.manual&&!candidate?.cancelled)message='自動曲線化はOFFです。元の直線輪郭を表示・出力します。';
+  $('automaticCurveStatus').textContent=message;
+  $('curveResultDetail').textContent=candidate?.origin==='dense-mask'?
+    `${candidate.manual?'自動フィット時点: ':''}密輪郭 ${candidate.diagnostics.rawPointCount}点 → ${candidate.diagnostics.anchorCount}点 / 直線 ${candidate.diagnostics.lineCount}・ベジェ ${candidate.diagnostics.cubicCount}。元のマスク輪郭に対する誤差上限 ${candidate.diagnostics.maxErrorBoundMm===null?'未確定':fmt(Number(candidate.diagnostics.maxErrorBoundMm),3)+' mm'}（補正前）。写真・実物への精度ではありません。穴・角・上面の縁を確認してください。${candidate.manual?' 手動調整後の形状には自動フィットの誤差上限は適用できません。':''}`:
+    candidate?.origin==='cloud-response'?'画像AIによる曲線推定・実API未検証。Bの密輪郭誤差保証はありません。比較する折線は同じ曲線の0.01 mm近似で、独立した検出結果ではありません。実測・CADで確認してください。':
+    source?'写真の重ね合わせは台紙座標を保持します。既知辺補正は計測値と書き出しだけに適用します。':'自動曲線化は初期設定でON。AはAI応答の曲線データを使用します。手でハンドルを作る必要はありません。';
+  if(candidate?.diagnostics.fragmented&&!candidate.manual)$('curveResultDetail').textContent+=` 画素段差まで保持して細分化しています。許容差を上げると単純化できる場合があります${candidate.diagnostics.recommendedToleranceMm?'（参考 '+fmt(Number(candidate.diagnostics.recommendedToleranceMm),2)+' mm）':''}。指定値は自動変更していません。`;
+  if(Number(candidate?.diagnostics.recommendedToleranceMm)>10)$('curveResultDetail').textContent+=' 参考値が設定上限10 mmを超える場合は、撮影範囲や入力解像度を見直してください。';
+  if(sampleId==='circle-plate')$('curveResultDetail').textContent+=' 円形の合成検証画像を使用しています。実物写真ではありません。';
+  if(active==='A')$('curveResultDetail').textContent+=' Aの簡略化設定の変更は、次回の「解析する」に適用します。';
+}
+$('showDenseContour').onchange=()=>renderCurveResult();
+$('showOriginalCurve').onclick=()=>{const c=currentCurveCandidate(active);if(!busy&&c){c.showing='polygon';render();}};
+$('showAutomaticCurve').onclick=()=>{const c=currentCurveCandidate(active);if(!busy&&c?.geometry&&!c.cancelled){c.showing='curve';render();}};
+$('cancelAutomaticCurve').onclick=()=>{const c=currentCurveCandidate(active);if(!busy&&c){c.showing='polygon';c.cancelled=true;c.revision=++curveRevision;render();}};
+$('automaticCurves').onchange=()=>{
+  if(busy)return;
+  const enabled=$<HTMLInputElement>('automaticCurves').checked;
+  for(const mode of ['A','B','C'] as Mode[]){const c=currentCurveCandidate(mode);if(c&&!c.manual){c.showing=enabled&&!c.cancelled&&c.geometry?'curve':'polygon';c.revision=++curveRevision;}}
+  if(enabled&&mask&&geometries.B)fitCurrentDenseCurve(traceMask(mask,board,Number(provenance.B?.mask_threshold??.5)).rawGeometry);
+  render();
+};
+for(const setting of ['curveTolerance','minimumCurveLength'])$(setting).onchange=()=>{
+  if(busy)return;
+  if(mask&&geometries.B)fitCurrentDenseCurve(traceMask(mask,board,Number(provenance.B?.mask_threshold??.5)).rawGeometry);
+  render();
+};
 function measurementGeometry(mode:Mode):Geometry|undefined {
   const g=geometries[mode];
   return g?transformMeasurementGeometry(g,currentCalibration(mode),{sourceEpoch,mode}):undefined;
@@ -497,20 +625,23 @@ function renderCalibration() {
     $<HTMLInputElement>("calibrationLength").value=c?String(c.knownLengthMm):"";
     previous=c?String(c.edgeIndex):"0";
   }
-  select.innerHTML=valid?g.outer.map((p,i)=>`<option value="${i}">E${i+1} · 補正前 ${fmt(Math.hypot(p.x-g.outer[(i+1)%g.outer.length].x,p.y-g.outer[(i+1)%g.outer.length].y),2)} mm</option>`).join(""):'<option value="">解析後に辺を選択</option>';
+  const candidate=currentCurveCandidate(active),native=candidate?.origin==='cloud-response'&&!candidate.manual?candidate.geometry:undefined;
+  const referenceEdges=valid?g.outer.map((p,i)=>({p,q:g.outer[(i+1)%g.outer.length],i})).filter(({p,q})=>!native||native.outer.some((a,j)=>{const b=native.outer[(j+1)%native.outer.length];return !a.outgoing&&!b.incoming&&a.x===p.x&&a.y===p.y&&b.x===q.x&&b.y===q.y;})):[];
+  select.innerHTML=referenceEdges.length?referenceEdges.map(({p,q,i})=>`<option value="${i}">E${i+1} · 補正前 ${fmt(Math.hypot(p.x-q.x,p.y-q.y),2)} mm</option>`).join(''):'<option value="">'+(valid?'基準にできる直線辺がありません':'解析後に辺を選択')+'</option>';
   if(Array.from(select.options).some(o=>o.value===previous))select.value=previous;
-  const locked=busy||!!drawing||!!dragging||!valid;
+  const locked=busy||!!drawing||!!dragging||!valid||!referenceEdges.length;
   for(const id of ["calibrationEdge","calibrationLength","calibrationAssumptions"])$<HTMLInputElement>(id).disabled=locked;
   $<HTMLButtonElement>("applyCalibration").disabled=locked||!$<HTMLInputElement>("calibrationAssumptions").checked||!(Number($<HTMLInputElement>("calibrationLength").value)>0);
-  $<HTMLButtonElement>("clearCalibration").disabled=locked||!c;
+  $<HTMLButtonElement>("clearCalibration").disabled=busy||!!drawing||!!dragging||!c;
   $("calibrationStatus").textContent=c?`${active} · ${c.edgeId}: ${fmt(c.originalLengthMm,3)} → ${fmt(c.knownLengthMm,3)} mm ／ 長さ ×${fmt(c.scaleFactor,6)}、面積 ×${fmt(c.scaleFactor*c.scaleFactor,6)}。写真・方眼は台紙座標のままです。`:'実測値による補正は未適用です。輪郭を変更した場合は補正を設定し直してください。';
   if(active!=="C"){
+    journey.setCurveGeometry(activeCurveGeometry(active),journeyToken);
     journey.setMeasurementScale(c?.scaleFactor??1,journeyToken);
-    journey.setReferenceEdge($<HTMLDetailsElement>("measurementCalibration").open && valid ? Number(select.value) : null,journeyToken);
+    journey.setReferenceEdge($<HTMLDetailsElement>("measurementCalibration").open && valid && referenceEdges.length ? Number(select.value) : null,journeyToken);
   }
 }
-$("calibrationEdge").onchange=()=>{renderCalibration();renderCanvas();};
-$("measurementCalibration").ontoggle=()=>{renderCalibration();renderCanvas();};
+$("calibrationEdge").onchange=()=>{renderCalibration();renderCanvas();renderCurveResult();};
+$("measurementCalibration").ontoggle=()=>{renderCalibration();renderCanvas();renderCurveResult();};
 $("calibrationLength").oninput=()=>renderCalibration();
 $("calibrationAssumptions").onchange=()=>renderCalibration();
 $("applyCalibration").onclick=()=>{
@@ -552,8 +683,10 @@ function renderCanvas() {
     for (const mode of ["A", "B", "C"] as Mode[]) {
       const g = geometries[mode];
       if (!g || !$<HTMLInputElement>(`show${mode}`).checked) continue;
-      html += `<path d="${allRings(g).map(ringPath).join("")}" fill="${mode === active ? colors[mode] + "12" : "none"}" fill-rule="evenodd" stroke="${colors[mode]}" stroke-width="${stroke * (mode === active ? 2 : 1.2)}" ${mode !== active ? 'stroke-dasharray="1.2 1"' : ""}/>`;
-      if (mode === active) {
+      const currentCurve=activeCurveGeometry(mode);
+      html += `<path d="${currentCurve?curveRings(currentCurve).map(curvePath).join(" "):allRings(g).map(ringPath).join("")}" fill="${mode === active ? colors[mode] + "12" : "none"}" fill-rule="evenodd" stroke="${colors[mode]}" stroke-width="${stroke * (mode === active ? 2 : 1.2)}" ${mode !== active ? 'stroke-dasharray="1.2 1"' : ""}/>`;
+      if(mode===active&&currentCurve&&$<HTMLDetailsElement>('measurementCalibration').open){const i=Number($<HTMLSelectElement>('calibrationEdge').value),p=g.outer[i],q=g.outer[(i+1)%g.outer.length];if(p&&q)html+=`<line data-calibration-reference x1="${p.x}" y1="${p.y}" x2="${q.x}" y2="${q.y}" stroke="#d92778" stroke-width="${stroke*4}"/><text x="${(p.x+q.x)/2}" y="${(p.y+q.y)/2+font}" font-size="${font}" fill="#a4004c" stroke="#fff" stroke-width="${font*.2}" paint-order="stroke" text-anchor="middle">元のE${i+1} · 補正基準</text>`;}
+      if (mode === active && !currentCurve) {
         const measurementScale=currentCalibration(mode)?.scaleFactor??1;
         allRings(g).forEach((ring, ri) => {
           ring.forEach((p, i) => {
@@ -589,17 +722,22 @@ function render() {
   $("exportStatus").textContent = "";
   renderCalibration();
   renderCanvas();
+  renderCurveResult();
   document
     .querySelectorAll<HTMLButtonElement>("[data-mode]")
     .forEach((b) => b.classList.toggle("active", b.dataset.mode === active));
   const raw = geometries[active], g = raw && validateGeometry(raw).valid ? measurementGeometry(active) : raw;
-  $("area").textContent = g ? fmt(geometryArea(g), 0) : "—";
-  $("vertices").textContent = g ? `${g.outer.length}` : "—";
+  const curve=measurementCurveGeometry(active),curveMeasure=curve?curveMetrics(curve):undefined;
+  $("area").textContent = curveMeasure?fmt(curveMeasure.area_approx_mm2,0):g ? fmt(geometryArea(g), 0) : "—";
+  $("vertices").textContent = curve?`${curve.outer.length}`:g ? `${g.outer.length}` : "—";
   $("holes").textContent = g ? `${g.holes.length}` : "—";
-  $("perimeter").textContent = g
+  $("perimeter").textContent = curveMeasure?`${fmt(curveMeasure.outer_length_mm)} mm`:g
     ? `${fmt(g.outer.reduce((s, p, i) => s + Math.hypot(p.x - g.outer[(i + 1) % g.outer.length].x, p.y - g.outer[(i + 1) % g.outer.length].y), 0))} mm`
     : "— mm";
-  $("edges").innerHTML = g
+  $("edges").innerHTML = curve&&curveMeasure?curveRings(curve).map((ring,ri)=>ring.map((p,i)=>{
+    const next=ring[(i+1)%ring.length],isCurve=!!(p.outgoing||next.incoming);
+    return `<div class="edge-row"><span>${ri?'H'+ri+' · ':''}${i+1} → ${(i+1)%ring.length+1} · ${isCurve?'曲線':'直線'}</span><span>${fmt(curveMeasure.edges[ri][i].length_mm)} mm <small>${isCurve?'曲線長 ≈':fmt(Math.atan2(next.y-p.y,next.x-p.x)*180/Math.PI)+'°'}</small></span></div>`;
+  }).join('')).join(''):g
     ? allRings(g)
         .map((r, ri) =>
           r
@@ -611,6 +749,8 @@ function render() {
         )
         .join("")
     : '<p class="hint">AI抽出後に表示されます。</p>';
+  const edgeCount=curve?curveRings(curve).reduce((n,r)=>n+r.length,0):g?allRings(g).reduce((n,r)=>n+r.length,0):0;
+  $("edgeCount").textContent=edgeCount?`全${edgeCount}辺${edgeCount>6?" · 下へスクロールで続き":""}`:"LENGTH / ANGLE";
   $("warnings").innerHTML = [...(warnings[active] ?? []), ...(currentCalibration(active) ? ["既知の上面辺から計測値を一様補正しています。写真の輪郭・台紙方眼は未変更です。側面や残る歪みは補正できません。"] : [])]
     .map((w) => `<p class="warn">${esc(w)}</p>`)
     .join("");
@@ -624,7 +764,7 @@ function renderBench() {
   const target = $("benchmark");
   target.innerHTML = (["A", "B", "C"] as Mode[])
     .map((m) => {
-      const g = geometries[m];
+      const curve=activeCurveGeometry(m),g=curve?flattenCurve(curve):geometries[m];
       if (!truth)
         return `<div class="benchcard"><b>MODE ${m}</b><p>実写真には正解寸法がありません。定規・ノギスと比較してください。</p></div>`;
       if (g && !validateGeometry(g).valid)
@@ -632,7 +772,7 @@ function renderBench() {
       if (!g)
         return `<div class="benchcard"><b>MODE ${m}</b><p>${m === "A" ? "API未実行" : m === "B" ? "AI未実行" : "未編集"}<br>予測値はまだありません。</p></div>`;
       const r = compareGeometry(g, truth);
-      return `<div class="benchcard"><b>MODE ${m} · ${currentCalibration(m)?"既知辺補正前 · ":""}境界平均誤差</b><div style="margin-top:8px"><strong>${fmt(r.boundary_mean_mm, 2)}</strong><span class="hint"> mm</span></div><p>境界最大 ${fmt(r.boundary_max_mm, 2)} mm<br>面積誤差 ${fmt(r.area_error_percent, 2)}%<br>穴 ${g.holes.length} / 正解 ${truth!.holes.length}<br>${r.edge_length_mae_mm === null ? "辺誤差: 対応不一致" : `辺平均誤差 ${fmt(r.edge_length_mae_mm, 2)} mm`}</p>${r.hole_count_mismatch ? '<p class="warn">穴の見落とし / 個数不一致</p>' : ""}</div>`;
+      return `<div class="benchcard"><b>MODE ${m} · ${curve?"曲線近似 · ":""}${currentCalibration(m)?"既知辺補正前 · ":""}境界平均誤差</b><div style="margin-top:8px"><strong>${fmt(r.boundary_mean_mm, 2)}</strong><span class="hint"> mm</span></div><p>境界最大 ${fmt(r.boundary_max_mm, 2)} mm<br>面積誤差 ${fmt(r.area_error_percent, 2)}%<br>穴 ${g.holes.length} / 正解 ${truth!.holes.length}<br>${r.edge_length_mae_mm === null ? "辺誤差: 対応不一致" : `辺平均誤差 ${fmt(r.edge_length_mae_mm, 2)} mm`}</p>${r.hole_count_mismatch ? '<p class="warn">穴の見落とし / 個数不一致</p>' : ""}</div>`;
     })
     .join("");
 }
@@ -950,12 +1090,14 @@ function commitVector(result: VectorResult) {
   ensureAnalysisMethod("B");
   journey.setGeometry(result.rawGeometry, result.r.geometry, journeyToken);
   geometries.B = result.r.geometry;
+  delete curveCandidates.B;
   warnings.B = [...result.r.warnings,"前景AIは上面・側面・影を識別できません。台紙の平面補正だけでは厚みによる尺度誤差は解消しません。"];
   provenance.B = {
     ...provenance.B,
     epsilon_mm: result.epsilon,
     mask_threshold: result.threshold,
   };
+  if($<HTMLInputElement>("automaticCurves").checked)fitCurrentDenseCurve(result.rawGeometry);
 }
 function revectorize() {
   ensureAnalysisMethod("B");
@@ -964,7 +1106,7 @@ function revectorize() {
   if (!mask) return;
   journey.clearAnalysis(journeyToken);
   journey.setMask(mask, Number($<HTMLInputElement>("threshold").value), journeyToken);
-  debug.remove(["binary", "contours", "polygon"]);
+  debug.remove(["binary", "contours", "polygon", "automatic-curves"]);
   try {
     const stages = vectorStages();
     let next = stages.next();
@@ -992,12 +1134,13 @@ async function runModeB(vectorize = true) {
     journey.setMarkers(journeyMarkerReport, journeyToken);
     journey.setRectified(flat, homographyDetails(markers, board), journeyToken);
   }
-  debug.remove(["probability", "binary", "contours", "polygon"]);
+  debug.remove(["probability", "binary", "contours", "polygon", "automatic-curves"]);
   journey.clearAnalysis(journeyToken);
   const token = journeyToken;
   delete geometries.B;
   delete provenance.B;
   delete calibrations.B;
+  delete curveCandidates.B;
   delete warnings.B;
   mask = undefined;
   maskUrl = "";
@@ -1120,7 +1263,7 @@ function applyTuningCandidate(candidate:Candidate, reason:string) {
   $("thresholdValue").textContent=candidate.threshold.toFixed(3);
   $("epsilonValue").textContent=`${candidate.epsilon.toFixed(2)} mm`;
   journey.clearAnalysis(journeyToken);journey.setMask(mask,candidate.threshold,journeyToken);
-  debug.remove(["binary","contours","polygon"]);
+  debug.remove(["binary","contours","polygon","automatic-curves"]);
   const stages=vectorStages();let next=stages.next();
   while(!next.done){debug.record(next.value);next=stages.next();}
   commitVector(next.value);
@@ -1231,8 +1374,9 @@ $("tuneRestore").onclick=()=>{
   $("thresholdValue").textContent=previous.threshold.toFixed(3);$("epsilonValue").textContent=`${previous.epsilon.toFixed(2)} mm`;
   tuneSelectedId=undefined;active="B";
   if(tuneReview)tuneReview={...tuneReview,applied:false,adoption:"restored_previous_result"};
-  if(mask){journey.clearAnalysis(journeyToken);journey.setMask(mask,previous.threshold,journeyToken);journey.setGeometry(traceMask(mask,board,previous.threshold).rawGeometry,previous.geometry,journeyToken);}
-  debug.remove(["binary","contours","polygon"]);
+  delete curveCandidates.B;
+  if(mask){const raw=traceMask(mask,board,previous.threshold).rawGeometry;journey.clearAnalysis(journeyToken);journey.setMask(mask,previous.threshold,journeyToken);journey.setGeometry(raw,previous.geometry,journeyToken);if($<HTMLInputElement>('automaticCurves').checked)fitCurrentDenseCurve(raw);}
+  debug.remove(["binary","contours","polygon","automatic-curves"]);
   $("tuneStatus").textContent="調整前の結果に戻しました。探索候補は比較用に残っています。";renderTuning();render();
 };
 $("autoTune").onclick=()=>void guarded(()=>runAutomaticSearch("閾値・εの候補を探索"));
@@ -1260,6 +1404,7 @@ function editCommit(g: Geometry, message = "編集を反映しました。") {
   }
   if (geometries.C) undo.push(cloneGeometry(geometries.C));
   geometries.C = g;
+  delete curveCandidates.C;
   provenance.C = {
     ...provenance.C,
     method: "human-edited",
@@ -1446,13 +1591,15 @@ async function runModeA(authorization?: RunAuthorization) {
       key = authorization?.key ?? $<HTMLInputElement>("apiKey").value,
       keyError = validateProviderKey(selectedProvider, key);
     if (keyError) throw Error(keyError);
+    const curveSettings=readCurveSettings();
     delete geometries.A;
     delete calibrations.A;
+    delete curveCandidates.A;
     delete provenance.A;
     delete warnings.A;
     active = "A";
     if(!unifiedRunActive) journey.clearAnalysis(journeyToken);
-    debug.remove(["api", "polygon"]);
+    debug.remove(["api", "polygon", "automatic-curves"]);
     render();
     activeRequest = new AbortController();
     const signal = AbortSignal.any([
@@ -1471,6 +1618,7 @@ async function runModeA(authorization?: RunAuthorization) {
           board,
           processing,
           signal,
+          {lineToleranceMm:curveSettings.toleranceMm,minCurveLengthMm:curveSettings.minCurveLengthMm},
         ),
         elapsedMs = performance.now() - started;
       await debug.checkpoint(
@@ -1519,10 +1667,13 @@ async function runModeA(authorization?: RunAuthorization) {
         model: r.model,
         request_id: r.requestId,
         surface_assessment: r.surfaceAssessment,
+        curve_simplification: r.curveSimplification,
+        curve_representation: r.curveRepresentation,
         surface_target_verified: false,
         grid_step_mm: Number($<HTMLSelectElement>("gridstep").value),
         scale_mm_per_px: board.width / board.pixelWidth,
       };
+      if(r.curveGeometry)curveCandidates.A={source:r.geometry,sourceSignature:JSON.stringify(r.geometry),epoch:sourceEpoch,revision:++curveRevision,geometry:copyCurve(r.curveGeometry),origin:'cloud-response',diagnostics:{status:'fitted',algorithm:'cloud-native-mixed-bezier',source:'native_cloud_response',dense_contour_error_bound:false,real_api_verified:false},showing:$<HTMLInputElement>('automaticCurves').checked?'curve':'polygon',cancelled:false,manual:false};
       warnings.A = ["上面境界を指定して推定しましたが、上面だけを正しく抽出したことは未検証です。厚みの尺度誤差と側面・影の混入を確認してください。", "LLM座標は視覚的な推定です。製造用の精度を保証しません。", ...(r.surfaceAssessment.uncertain?["上面の境界に不確実な箇所があるとAIが報告しています。"]:[]), ...(r.surfaceAssessment.occluded_edges?["見えない上面の縁が含まれています。該当する辺の寸法は実測してください。"]:[]), ...(r.surfaceAssessment.sidewall_risk?["側面が境界に混ざる危険が報告されています。正面に近い撮影で再解析してください。"]:[])];
       active = "A";
       processing(
@@ -1566,6 +1717,7 @@ $("editC").onclick = () => {
   const from = active;
   geometries.C = cloneGeometry(g);
   delete calibrations.C;
+  delete curveCandidates.C;
   provenance.C = {
     ...provenance[from],
     method: "human-edited",
@@ -1582,6 +1734,7 @@ $("undo").onclick = () => {
   const g = undo.pop();
   if (g) {
     geometries.C = g;
+  delete curveCandidates.C;
     selected = undefined;
     render();
     status("ひとつ前の図形に戻しました。");
@@ -1741,23 +1894,26 @@ for (const [id, type, ext, fn] of [
     const g = geometries[active];
     if (!g) return;
     try {
-      download(
-        fn(measurementGeometry(active)!, board, board.preset, {
+      const curve=measurementCurveGeometry(active),candidate=currentCurveCandidate(active);
+      const exportProvenance={
           ...provenance[active],
           app_build: APP_BUILD,
           measurement_calibration: currentCalibration(active)?.provenance ?? null,
           coordinate_space: currentCalibration(active) ? "measurement-only calibrated coordinates; photo overlays remain in original board coordinates" : "original marker-plane millimetres",
           original_geometry_mm: currentCalibration(active) ? g : undefined,
+          original_straight_geometry_mm: curve?g:undefined,
+          original_dense_geometry_mm: curve?candidate?.rawGeometry:undefined,
+          automatic_curve: candidate?{...candidate.diagnostics,source_revision:candidate.revision,source_epoch:candidate.epoch,active:!!curve,cancelled:candidate.cancelled,manual_refinement:candidate.manual,error_bound_applies_to_current_geometry:!!curve&&!candidate.manual&&candidate.origin==='dense-mask',measurement_scale_factor:currentCalibration(active)?.scaleFactor??1}:undefined,
+          curve_origin:curve?candidate?.origin:undefined,
           marker_plane_mm_per_px: {x:board.width/board.pixelWidth,y:board.height/board.pixelHeight},
-          svg_export_bounds_mm: svgExportBounds(measurementGeometry(active)!,board),
+          svg_export_bounds_mm: curve?curveExportBounds(curve):svgExportBounds(measurementGeometry(active)!,board),
           export_translation_mm: {x:0,y:0},
           scale_mm_per_px: board.width / board.pixelWidth * (currentCalibration(active)?.scaleFactor ?? 1),
           source_image: sampleId || "user-upload",
           scale_y_mm_per_px: board.height / board.pixelHeight * (currentCalibration(active)?.scaleFactor ?? 1),
-        }),
-        type,
-        ext,
-      );
+      };
+      const content=curve?(ext==='svg'?curveSvg(curve,board,exportProvenance):ext==='json'?curveJson(curve,board,exportProvenance):curveDxf(curve,board)):fn(measurementGeometry(active)!,board,board.preset,exportProvenance);
+      download(content,type,ext);
       $("exportStatus").classList.remove("error");
       $("exportStatus").textContent=`${ext.toUpperCase()}を実寸mmで書き出しました${currentCalibration(active)?"（既知の上面辺による計測値補正を適用）":""}。`;
     } catch (e) {
@@ -1800,4 +1956,19 @@ restoreProviderKey();
 render();
 void loadSample("l-shape");
 
-$("editCurves").onclick=()=>{if(busy||drawing||dragging)return;const g=measurementGeometry(active);if(g&&validateGeometry(g).valid)openCurveEditor(g,board,{...provenance[active],manual_curve_edit:true,measurement_calibration:currentCalibration(active)?.provenance??null},flatUrl?{url:flatUrl,scale:currentCalibration(active)?.scaleFactor??1,anchor:currentCalibration(active)?.anchor??{x:0,y:0}}:undefined,geometries[active]!);};
+function refineCurrentCurve(){
+  if(busy||drawing||dragging)return;
+  const mode=active,source=geometries[mode],g=measurementGeometry(mode),epoch=sourceEpoch,c=currentCalibration(mode),candidate=currentCurveCandidate(mode),seed=measurementCurveGeometry(mode);
+  if(!source||!g||!validateGeometry(g).valid)return;
+  openCurveEditor(g,board,{...provenance[mode],manual_curve_edit:true,measurement_calibration:c?.provenance??null},flatUrl?{url:flatUrl,scale:c?.scaleFactor??1,anchor:c?.anchor??{x:0,y:0}}:undefined,source,{
+    seed,revision:candidate?.revision??0,onApply:edited=>{
+      if(sourceEpoch!==epoch||geometries[mode]!==source)throw Error('画像または解析結果が変わりました。現在の結果から開き直してください。');
+      const original=transformCurveGeometry(edited,1/(c?.scaleFactor??1),c?.anchor??{x:0,y:0});
+      if(!validateCurve(original).valid)throw Error('曲線を安全に反映できません。');
+      curveCandidates[mode]={source,sourceSignature:JSON.stringify(source),epoch,revision:++curveRevision,geometry:original,rawGeometry:candidate?.rawGeometry,origin:candidate?.origin??'manual',diagnostics:{...candidate?.diagnostics,status:'fitted',manual_refinement:true},showing:'curve',cancelled:false,manual:true};
+      render();
+    }
+  });
+}
+$('editCurves').onclick=refineCurrentCurve;
+$('refineCurves').onclick=refineCurrentCurve;

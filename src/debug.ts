@@ -16,6 +16,7 @@ export type DebugStageId =
   | "binary"
   | "contours"
   | "polygon"
+  | "automatic-curves"
   | "api"
   | "tuning"
   | "calibration";
@@ -28,6 +29,7 @@ export interface DebugStage {
   state?: "complete" | "error";
 }
 const labels: Record<DebugStageId, string> = {
+  "automatic-curves": "自動曲線化",
   input: "入力写真",
   markers: "ArUco検出",
   rectified: "平面補正",

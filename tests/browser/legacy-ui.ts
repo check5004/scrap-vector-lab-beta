@@ -38,7 +38,10 @@ async function sourceIdle(page: Page, expectedSample?: string) {
     await expect(page.locator('#sourceLabel')).toContainText(` / ${expectedSample}`);
   }
 }
-export async function sourceReady(page: Page, expectedSample?: string) {
+export async function sourceReady(page: Page, expectedSample?: string, options: {keepAutomaticCurves?: boolean} = {}) {
+  // These existing dev.4 regression flows intentionally assert polygon exports.
+  // The dev.5 auto-curves suite explicitly keeps and verifies the new ON default.
+  if(!options.keepAutomaticCurves)await page.locator('#automaticCurves').uncheck();
   await sourceIdle(page, expectedSample);
   await expect(page.locator('#status')).toContainText('写真を読み込みました', { timeout: 30_000 });
 }
@@ -48,6 +51,7 @@ export async function startLegacyCalibration(page: Page) {
   await page.locator('#rectify').click();
 }
 export async function legacyReady(page: Page, expectedSample?: string) {
+  await page.locator('#automaticCurves').uncheck();
   await openLegacyDetails(page);
   await sourceIdle(page, expectedSample);
   await expect(page.locator('#status')).toContainText(/写真を読み込みました|平面補正できました/, { timeout: 30_000 });

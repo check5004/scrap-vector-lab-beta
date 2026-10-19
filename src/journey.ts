@@ -1,4 +1,5 @@
 import './journey.css';
+import {copyCurve,flattenCurve,flattenEdge,validateCurve,type CurveGeometry} from './curves';
 import { cloneGeometry, type Geometry, type Point } from './geometry';
 import type { Board, MarkerDetectionReport, MaskResult, homographyDetails } from './vision';
 import { clamp01, conditionedPlaneMatrix, CSS_PLANE_EXTENT, dimensionEdges, fitPoints, interpolateQuad, interpolateView, interpolateCamera, orientCropCamera, lerp, matrix3d, projectPoint, rectangleQuad, rectangleToQuad, smoothStep, transformPoint, type DimensionEdge, type Quad, type ViewTransform } from './journey-math';
@@ -23,7 +24,7 @@ const DESCRIPTIONS = [
   '4点の射影変換で、マーカーの基準平面へ補正します。厚みのある側面や高低差は残り、寸法誤差の原因になります。',
   '実際のU²-NetP出力を重ねています。穴や細部の見落としを確認してください。',
   'マスクをなぞった輪郭です。外周と検出された穴を保持します。',
-  '直線化した輪郭の各辺を、基準スケールからミリに換算しています。',
+  '選択中の輪郭を、基準スケールからミリに換算しています。曲線は弧長として区別します。',
 ];
 const METHOD_TITLES: Record<JourneyMethod, string> = { A: 'A · GPT-6 Luna', B: 'B · ローカル U²-NetP' };
 const HOLD = [800, 600, 450, 550, 750, 650, 0];
@@ -48,7 +49,7 @@ function geometryPath(geometry: Geometry, project: (point: Point) => Point): str
   return [geometry.outer, ...geometry.holes].map(ring => ringPath(ring, project)).join(' ');
 }
 interface MarkerNode { corners: Point[]; polygon: SVGPolygonElement; label: SVGTextElement; index: number }
-interface EdgeNode { edge: DimensionEdge; line: SVGLineElement; group: SVGGElement; box: SVGRectElement; text: SVGTextElement; title: SVGTitleElement }
+interface EdgeNode { curved:boolean; edge: DimensionEdge; line: SVGLineElement; group: SVGGElement; box: SVGRectElement; text: SVGTextElement; title: SVGTitleElement }
 interface LabelBox { x: number; y: number; width: number; height: number }
 interface Transition { from: number; to: number; start: number; duration: number }
 
@@ -100,6 +101,9 @@ export class MeasurementJourney {
   private mask?: MaskResult;
   private rawGeometry?: Geometry;
   private geometry?: Geometry;
+  private curveGeometry?: CurveGeometry;
+  private curveFlattened?: Geometry;
+  private curveSignature = '';
   private measurementScale = 1;
   private referenceEdgeIndex: number | null = null;
   private threshold = 0.5;
@@ -211,12 +215,12 @@ export class MeasurementJourney {
   reset(): void {
     this.stopAnimation(); this.token++;
     this.hasSource = this.hasFlat = false; this.board = undefined; this.markerReport = undefined; this.homography = undefined;
-    this.mask = undefined; this.rawGeometry = undefined; this.geometry = undefined; this.measurementScale = 1; this.referenceEdgeIndex = null;
+    this.mask = undefined; this.rawGeometry = undefined; this.geometry = undefined; this.curveGeometry=undefined;this.curveFlattened=undefined;this.curveSignature=''; this.measurementScale = 1; this.referenceEdgeIndex = null;
     this.position = this.target = 0; this.playing = false; this.followingLatest = false; this.fallback = !this.supportsProjective; this.editing = false; this.analysisLocked = false; this.editMessage = '';
     this.processing = 'idle'; this.processingMessage = '写真を選んでください';
     this.markers = []; this.edges = []; this.vertices = [];
     this.markerGroup.replaceChildren(); this.dimensionGroup.replaceChildren(); this.vertexGroup.replaceChildren();
-    this.rawPath.removeAttribute('data-geometry-mm'); this.simplifiedPath.removeAttribute('data-geometry-mm');
+    this.rawPath.removeAttribute('data-geometry-mm'); this.simplifiedPath.removeAttribute('data-geometry-mm');this.simplifiedPath.removeAttribute('data-curve-geometry-mm');
     this.rawPath.removeAttribute('data-geometry-source'); this.simplifiedPath.removeAttribute('data-geometry-source');
     delete this.detail.dataset.dimensions;
     this.reference.removeAttribute('data-source-corners'); this.reference.setAttribute('points', '');
@@ -295,13 +299,29 @@ export class MeasurementJourney {
     const finite = (g: Geometry) => g.outer.length >= 3 && [g.outer, ...g.holes].every(ring => ring.every(p => Number.isFinite(p.x) && Number.isFinite(p.y)));
     if (!finite(rawGeometry) || !finite(geometry)) { this.clearAnalysis(token); this.fail('輪郭の表示データが不正です。', token); return; }
     if (replacement) this.stopAnimation();
-    this.rawGeometry = cloneGeometry(rawGeometry); this.geometry = cloneGeometry(geometry); this.measurementScale = 1; this.referenceEdgeIndex = null;
+    this.rawGeometry = cloneGeometry(rawGeometry); this.geometry = cloneGeometry(geometry);this.curveGeometry=undefined;this.curveFlattened=undefined;this.curveSignature=''; this.measurementScale = 1; this.referenceEdgeIndex = null;
+    delete this.simplifiedPath.dataset.curveGeometryMm;
     this.rawPath.dataset.geometryMm = JSON.stringify(this.rawGeometry); this.simplifiedPath.dataset.geometryMm = JSON.stringify(this.geometry);
     this.rawPath.dataset.geometrySource = this.method === 'A' ? 'gpt-6-luna-polygon' : 'u2netp-mask-contour';
     this.simplifiedPath.dataset.geometrySource = this.method === 'A' ? 'gpt-6-luna-polygon' : 'simplified-mask-contour';
     this.buildGeometryNodes();
     if (replacement) { this.playing = false; this.followingLatest = false; this.position = this.target = 6; }
     this.changed();
+  }
+
+  /** Final result override. Board coordinates stay fixed; arc lengths scale only as measurements. */
+  setCurveGeometry(curve:CurveGeometry|undefined,token=this.token):boolean {
+    if(!this.accept(token)||this.analysisLocked||!this.geometry)return false;
+    const signature=curve?JSON.stringify(curve):'';
+    if(signature===this.curveSignature)return true;
+    if(curve&&!validateCurve(curve).valid)return false;
+    this.curveGeometry=curve?copyCurve(curve):undefined;
+    this.curveFlattened=curve?flattenCurve(curve):undefined;
+    this.curveSignature=signature;
+    this.simplifiedPath.dataset.curveGeometryMm=signature;
+    this.simplifiedPath.dataset.geometryMm=JSON.stringify(this.curveFlattened??this.geometry);
+    this.simplifiedPath.dataset.geometrySource=curve?'automatic-or-refined-bezier':this.method==='A'?'gpt-6-luna-polygon':'simplified-mask-contour';
+    this.buildGeometryNodes();this.updateDimensionLabels();this.renderSafely();this.syncUI();return true;
   }
 
   /**
@@ -331,12 +351,12 @@ export class MeasurementJourney {
   clearAnalysis(token = this.token): void {
     if (!this.accept(token)) return;
     const showRevision = !this.playing && (this.position >= 4 || !!this.geometry);
-    this.stopAnimation(); this.mask = undefined; this.rawGeometry = undefined; this.geometry = undefined; this.measurementScale = 1; this.referenceEdgeIndex = null;
+    this.stopAnimation(); this.mask = undefined; this.rawGeometry = undefined; this.geometry = undefined; this.curveGeometry=undefined;this.curveFlattened=undefined;this.curveSignature=''; this.measurementScale = 1; this.referenceEdgeIndex = null;
     this.followingLatest = showRevision;
     if (this.processing === 'error' || this.processing === 'cancelled') { this.processing = 'idle'; this.processingMessage = '取得済みの平面補正から再開できます'; }
     this.maskCanvas.width = this.maskCanvas.height = 1;
     this.maskCanvas.removeAttribute('data-mask-size'); this.maskCanvas.removeAttribute('data-threshold');
-    this.rawPath.removeAttribute('data-geometry-mm'); this.simplifiedPath.removeAttribute('data-geometry-mm');
+    this.rawPath.removeAttribute('data-geometry-mm'); this.simplifiedPath.removeAttribute('data-geometry-mm');this.simplifiedPath.removeAttribute('data-curve-geometry-mm');
     this.rawPath.removeAttribute('data-geometry-source'); this.simplifiedPath.removeAttribute('data-geometry-source');
     delete this.detail.dataset.dimensions;
     this.dimensionGroup.replaceChildren(); this.vertexGroup.replaceChildren(); this.edges = []; this.vertices = [];
@@ -502,14 +522,18 @@ export class MeasurementJourney {
   private buildGeometryNodes(): void {
     this.dimensionGroup.replaceChildren(); this.vertexGroup.replaceChildren();
     if (!this.geometry) return;
-    this.edges = dimensionEdges(this.geometry.outer, this.geometry.holes).map(edge => {
+    const displayed=this.curveGeometry??this.geometry;
+    const curveEdges=this.curveGeometry?[this.curveGeometry.outer,...this.curveGeometry.holes].flatMap(r=>r.map((a,i)=>{const b=r[(i+1)%r.length],f=flattenEdge(a,b);return {curved:!!a.outgoing||!!b.incoming,length:(f.lower+f.upper)/2};})):[];
+    this.edges = dimensionEdges(displayed.outer, displayed.holes).map((edge,index) => {
+      const curved=curveEdges[index]?.curved??false;
+      if(curveEdges[index])edge={...edge,lengthMm:curveEdges[index].length};
       const group = svgElement('g', { 'data-edge-id': edge.id });
       const line = svgElement('line'); const box = svgElement('rect', { rx: '5', height: '23' });
-      const text = svgElement('text', { 'data-mm': String(edge.lengthMm), 'data-edge-id': edge.id }); text.textContent = `${edge.lengthMm.toFixed(1)} mm`;
+      const text = svgElement('text', { 'data-mm': String(edge.lengthMm), 'data-edge-id': edge.id,'data-edge-kind':curved?'curve':'line' }); text.textContent = `${curved?'弧 ':''}${edge.lengthMm.toFixed(1)} mm`;
       const title = svgElement('title'); title.textContent = `${edge.id}: ${edge.lengthMm} mm`;
-      group.append(line, box, text, title); this.dimensionGroup.append(group); return { edge, group, line, box, text, title };
+      group.append(line, box, text, title); this.dimensionGroup.append(group); return { curved,edge, group, line, box, text, title };
     });
-    this.vertices = [this.geometry.outer, ...this.geometry.holes].flatMap(ring => ring.map(point => {
+    this.vertices = [displayed.outer, ...displayed.holes].flatMap(ring => ring.map(point => {
       const element = svgElement('circle', { r: '3.4', 'data-vertex-mm': JSON.stringify(point) }); this.vertexGroup.append(element); return { point, element };
     }));
   }
@@ -518,7 +542,7 @@ export class MeasurementJourney {
     for (const node of this.edges) {
       const lengthMm = node.edge.lengthMm * this.measurementScale;
       node.text.setAttribute('data-mm', String(lengthMm));
-      node.text.textContent = `${lengthMm.toFixed(1)} mm`;
+      node.text.textContent = `${node.curved?'弧 ':''}${lengthMm.toFixed(1)} mm`;
       node.title.textContent = `${node.edge.id}: ${lengthMm} mm`;
     }
   }
@@ -601,7 +625,7 @@ export class MeasurementJourney {
     if (this.rawGeometry && planeMap && contourProgress > 0) this.rawPath.setAttribute('d', geometryPath(this.rawGeometry, geometryMap)); else this.rawPath.setAttribute('d', '');
     let dimensionBoxes: LabelBox[] = [];
     if (this.geometry && planeMap && p > 5) {
-      this.simplifiedPath.setAttribute('d', geometryPath(this.geometry, geometryMap));
+      this.simplifiedPath.setAttribute('d', geometryPath(this.curveFlattened??this.geometry, geometryMap));
       for (const vertex of this.vertices) { const point = geometryMap(vertex.point); vertex.element.setAttribute('cx', String(point.x)); vertex.element.setAttribute('cy', String(point.y)); }
       dimensionBoxes = this.positionDimensions(geometryMap, viewport);
     } else this.simplifiedPath.setAttribute('d', '');

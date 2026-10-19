@@ -242,7 +242,7 @@ def create_sample(page, name, title, outer, holes, quad, seed, analytic_area=Non
         "photo_size_px": [photo_w, photo_h], "seed": seed,
         "mask_path": f"samples/{name}.mask.png", "rectified_path": f"samples/{name}.rectified.png",
         "limitations": ["Synthetic planar scene; no lens distortion or real manufacturing uncertainty.",
-            "The circle is represented by a 128-sided polygon; analytic circle area is stored separately.",
+            f"Curved boundaries are polygonal truth samples (outer {len(outer)} points); analytic area is stored separately.",
             "Use photo pixels for detection/inference; ground truth is for evaluation only."]}
     if ai_texture is not None:
         truth.update({
@@ -279,15 +279,19 @@ def main():
     page = create_print_sheet()
     circle = [[125 + 20 * math.cos(-2 * math.pi * i / 128), 86 + 20 * math.sin(-2 * math.pi * i / 128)] for i in range(128)]
     outer_trap = [[65, 30], [185, 30], [215, 140], [35, 140]]
+    circle_plate = [[125 + 55 * math.cos(2 * math.pi * i / 256), 85 + 55 * math.sin(2 * math.pi * i / 256)] for i in range(256)]
     definitions = [
         ("l-shape", "L字型 / scratches", [[35,25],[185,25],[185,80],[105,80],[105,145],[35,145]], [], [[145,138],[1605,75],[1690,1195],[85,1250]], 451, None),
         ("notched", "凹型 / uneven light", [[35,30],[90,30],[90,85],[155,85],[155,30],[215,30],[215,140],[35,140]], [], [[220,60],[1650,195],[1555,1260],[70,1110]], 921, None),
         ("trapezoid-hole", "台形 + 丸穴 / reflection", outer_trap, [circle], [[120,205],[1570,70],[1715,1130],[225,1280]], 173, 16500 - math.pi * 20 ** 2),
     ]
+    definitions.append(("circle-plate", "円形部材 / deterministic synthetic curve fixture", circle_plate, [], [[145,138],[1605,75],[1690,1195],[85,1250]], 772, math.pi * 55 ** 2))
     report = [create_sample(page, *definition) for definition in definitions]
     textures = load_ai_textures()
     for definition in definitions:
         name, title, *geometry = definition
+        if name not in textures:
+            continue
         report.append(create_sample(page, f"ai-{name}", f"AI texture / {title}", *geometry, ai_texture=textures[name]))
     write_json(SAMPLES / "index.json", report)
     write_json(SAMPLES / "generation-report.json", {

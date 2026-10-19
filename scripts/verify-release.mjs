@@ -7,7 +7,7 @@ const repository = process.env.GITHUB_REPOSITORY;
 let commit = process.env.GITHUB_SHA;
 if (repository === betaRepository) {
   const mapping = JSON.parse(await readFile('release-source.json','utf8'));
-  if (mapping.repository !== sourceRepository || mapping.branch !== 'beta/curves-20261019' || !/^[a-f0-9]{40}$/.test(mapping.commit)) throw Error('Invalid pinned beta source mapping.');
+  if (mapping.repository !== sourceRepository || mapping.branch !== 'beta/auto-curves-20261019' || !/^[a-f0-9]{40}$/.test(mapping.commit)) throw Error('Invalid pinned beta source mapping.');
   commit = mapping.commit;
   const response = await fetch(`https://api.github.com/repos/${sourceRepository}/git/trees/${commit}?recursive=1`, {headers:{Accept:'application/vnd.github+json'},redirect:'error'});
   if (!response.ok) throw Error(`Cannot verify public source tree: HTTP ${response.status}`);
