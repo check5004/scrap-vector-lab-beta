@@ -6,8 +6,18 @@ import { expect, type Page } from '@playwright/test';
 export async function openDetailsFor(page: Page, selector: string) {
   const ancestors = page.locator('details').filter({ has: page.locator(selector) });
   for (const details of await ancestors.all()) {
-    if (!(await details.evaluate(node => node.hasAttribute('open'))))
-      await details.locator(':scope > summary').click();
+    if (await details.evaluate(node => node.hasAttribute('open'))) continue;
+    if (await details.getAttribute('id') === 'apiSettings') {
+      // Closed API settings are intentionally absent from the layout, including
+      // their summary. Use the same visible opener as a person, preserving the
+      // chosen analysis method and never starting an analysis or sending data.
+      const selectedMethod = await page.locator('[name="analysisMethod"]:checked').inputValue();
+      if (await page.locator('#configureKey').isHidden()) await page.locator('#methodA').check();
+      await page.locator('#configureKey').click();
+      await page.locator(`#method${selectedMethod}`).check();
+      await expect(page.locator(`#method${selectedMethod}`)).toBeChecked();
+      await expect(details).toHaveAttribute('open', '');
+    } else await details.locator(':scope > summary').click();
   }
 }
 export async function openLegacyDetails(page: Page) {

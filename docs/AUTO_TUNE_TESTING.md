@@ -80,7 +80,11 @@ calibration action after source selection for the existing stage-level tests.
 Those regressions are retained, including inference, manual edits, actual-pixel
 journey comparisons, export, key safety, photo decoding, EXIF orientation,
 marker rejection, review consent, cancellation and bounded search. Hidden legacy
-controls are not used to drive the normal one-click tests.
+controls are not used to drive the normal one-click tests. The legacy helper
+opens the CSS-hidden key panel through the visible Configure Key action and
+restores the selected method; it never force-clicks a hidden summary or mutates
+its open state. Journey cancellation and editor access use the visible primary
+Cancel and editor-toggle controls, with the same semantic and touch assertions.
 
 ## Coverage
 

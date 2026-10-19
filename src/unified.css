@@ -55,7 +55,7 @@
 .input-extras { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--lab-line); }
 .compact-details { min-width: 0; padding: 15px 0; }
 .compact-details + .compact-details { border-left: 1px solid var(--lab-line); padding-left: 22px; margin-left: 22px; }
-.compact-details > summary { color: #536348; font-size: 11px; font-weight: 500; min-height: 22px; }
+.compact-details > summary { color: #536348; font-size: 11px; font-weight: 500; min-height: 44px; }
 .compact-details[open] > summary { margin-bottom: 15px; }
 .unified-app .sample-label { font-size: 10px; color: var(--lab-muted); margin: 10px 0 8px; }
 .unified-app .samples { gap: 7px; }
@@ -65,7 +65,7 @@
 .calibration-fields .field { font-size: 11px; }
 .calibration-fields .row .field { flex: 1; }
 .print-links { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; margin: 12px 0; font-size: 11px; }
-.print-links button { min-height: 36px; padding: 7px 10px; font-size: 10px; }
+.print-links button { min-height: 44px; padding: 7px 10px; font-size: 10px; }
 .analysis-setup { padding: 25px 28px 23px; }
 .method-picker { border: 0; padding: 0; margin: 22px 0 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; min-width: 0; }
 .method-card { display: flex; align-items: flex-start; gap: 11px; min-width: 0; padding: 20px 18px 18px; border: 1px solid #d4dacf; border-radius: 11px; background: #fffefa; cursor: pointer; transition: border-color 140ms ease, background-color 140ms ease; }
@@ -85,14 +85,14 @@
 .review-toggle strong { font-size: 11px; font-weight: 500; color: #59684f; }
 .review-toggle > span > span { font-size: 10px; color: var(--lab-muted); }
 .review-limit { display: flex; align-items: center; gap: 8px; font-size: 10px; color: #697364; flex-shrink: 0; }
-.unified-app .review-limit select { min-height: 34px; width: 62px; font-size: 11px; padding: 6px 8px; }
+.unified-app .review-limit select { min-height: 44px; width: 62px; font-size: 11px; padding: 6px 8px; }
 .analysis-start { margin-top: 23px; padding-top: 22px; border-top: 1px solid var(--lab-line); }
 .analysis-action-row { display: flex; align-items: center; gap: 12px; }
 .unified-app .analyze-button { display: flex; align-items: center; justify-content: space-between; gap: 56px; min-width: 226px; min-height: 54px; padding: 15px 22px; border-radius: 9px; font-size: 15px; letter-spacing: .03em; }
 .analyze-button > span { font-size: 20px; font-weight: 400; line-height: 1; }
 .key-action { display: flex; align-items: flex-start; flex-direction: column; gap: 2px; margin-left: auto; }
 #analysisKeyStatus { font-size: 10px; line-height: 1.7; color: var(--lab-muted); overflow-wrap: anywhere; }
-.unified-app .text-button { padding: 2px 0; min-height: 28px; font-size: 11px; border: 0; background: none; border-radius: 0; color: #47613e; text-decoration: underline; text-underline-offset: 4px; }
+.unified-app .text-button { padding: 2px 0; min-height: 44px; font-size: 11px; border: 0; background: none; border-radius: 0; color: #47613e; text-decoration: underline; text-underline-offset: 4px; }
 .unified-app .text-button:hover:not(:disabled) { background: none; color: #223c1b; }
 .analysis-disclosure { font-size: 11px; line-height: 1.85; color: #64735a; margin: 12px 0 0; max-width: 78em; }
 .analysis-disclosure:empty { display: none; }
@@ -122,16 +122,16 @@
 .unified-app .journey-stage-title { font-size: 17px; }
 .unified-app .journey-stage-description { font-size: 11px; }
 .unified-app .journey-steps { padding: 0 22px 15px; gap: 5px; }
-.unified-app .journey-steps button { min-height: 42px; border-radius: 5px 5px 0 0; font-size: 11px; }
+.unified-app .journey-steps button { min-height: 44px; border-radius: 5px 5px 0 0; font-size: 11px; }
 .unified-app .journey-bottom { padding: 0 24px 19px; }
-.unified-app .journey-controls button { min-height: 38px; font-size: 11px; padding: 7px 12px; }
+.unified-app .journey-controls button { min-height: 44px; font-size: 11px; padding: 7px 12px; }
 .unified-app .journey-process { padding: 12px 28px; background: #eef2e8; }
 .unified-app .workflow-status { border: 0; background: transparent; color: var(--lab-muted); padding: 0 3px; min-height: 0; margin: 12px 0 26px; font-size: 11px; }
 .unified-app .workflow-status.error { color: #955536; }
 .result-card { padding: 25px 28px 0; }
 .result-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
 .result-top .tabs { min-width: 255px; flex-shrink: 0; }
-.result-top .tabs button { min-height: 37px; padding: 8px; font-size: 10px; }
+.result-top .tabs button { min-height: 44px; padding: 8px; font-size: 10px; }
 .result-metrics { display: grid; grid-template-columns: 1.55fr 1fr 1fr 1.1fr; gap: 22px; margin: 25px 0 22px; }
 .area-metric > span, .result-metrics .submetric > span { font-size: 11px; color: var(--lab-muted); }
 .area-metric > span > small { margin-left: 6px; font-size: 9px; color: #87907f; }
@@ -164,10 +164,10 @@
 .unified-app .editor-disclosure > div { display: flex; flex-direction: column; gap: 5px; }
 .unified-app .editor-disclosure b { font-size: 12px; font-weight: 550; }
 .unified-app .editor-disclosure span { color: var(--lab-muted); font-size: 10px; line-height: 1.7; }
-.unified-app .editor-disclosure button { flex-shrink: 0; min-height: 39px; font-size: 11px; }
+.unified-app .editor-disclosure button { flex-shrink: 0; min-height: 44px; font-size: 11px; }
 .unified-app .canvaswrap { min-height: 360px; }
 .unified-app .editbar { padding: 14px 20px; }
-.unified-app .editbar button { min-height: 38px; font-size: 11px; }
+.unified-app .editbar button { min-height: 44px; font-size: 11px; }
 .editing-hint { padding: 0 22px 20px; }
 .advanced-diagnostics { margin-top: 24px; border-top: 1px solid #d4dbcb; border-bottom: 1px solid #d4dbcb; }
 .advanced-diagnostics > summary { padding: 20px 3px; color: #65715b; font-size: 11px; font-weight: 500; }
@@ -256,13 +256,13 @@
   .source-preview-wrap { width: 81px; height: 81px; border-radius: 7px; }
   .input-summary { font-size: 11px; line-height: 1.7; margin-bottom: 8px; }
   .input-buttons { gap: 6px; }
-  .input-buttons button { min-height: 42px; font-size: 10px; padding: 8px 9px; gap: 5px; flex: 1; white-space: nowrap; }
+  .input-buttons button { min-height: 44px; font-size: 10px; padding: 8px 9px; gap: 5px; flex: 1; white-space: nowrap; }
   .input-buttons svg { width: 14px; height: 14px; }
   .input-actions > .hint { font-size: 9px; line-height: 1.8; }
   .input-extras { grid-template-columns: 1fr; }
   .compact-details { padding: 13px 0; }
   .compact-details + .compact-details { margin-left: 0; padding-left: 0; border-left: 0; border-top: 1px solid var(--lab-line); }
-  .compact-details > summary { min-height: 20px; }
+  .compact-details > summary { min-height: 44px; }
   .analysis-setup { padding: 20px 17px 18px; }
   .method-picker { gap: 10px; margin-top: 18px; grid-template-columns: 1fr; }
   .method-card { padding: 16px; gap: 11px; }
@@ -275,7 +275,7 @@
   .review-toggle { gap: 7px; }
   .review-toggle > span > span { font-size: 9px; }
   .review-limit { flex-direction: column; align-items: flex-start; gap: 4px; font-size: 8px; }
-  .unified-app .review-limit select { min-height: 34px; width: 60px; }
+  .unified-app .review-limit select { min-height: 44px; width: 60px; }
   .analysis-start { margin-top: 18px; padding-top: 18px; }
   .analysis-action-row { flex-wrap: wrap; gap: 10px; }
   .unified-app .analyze-button { width: 100%; min-width: 0; min-height: 53px; padding: 14px 20px; }
@@ -297,9 +297,9 @@
   .unified-app .journey-stage-description { font-size: 10px; }
   .unified-app .journey-playback { font-size: 9px; }
   .unified-app .journey-steps { padding: 0 11px 12px; gap: 2px; }
-  .unified-app .journey-steps button { padding: 8px 6px; font-size: 9px; min-height: 39px; }
+  .unified-app .journey-steps button { padding: 8px 6px; font-size: 9px; min-height: 44px; }
   .unified-app .journey-bottom { padding: 0 14px 14px; gap: 8px; }
-  .unified-app .journey-controls button { padding: 8px 7px; min-height: 39px; font-size: 10px; }
+  .unified-app .journey-controls button { padding: 8px 7px; min-height: 44px; font-size: 10px; }
   .unified-app .journey-motion-note { font-size: 9px; }
   .unified-app .journey-process { padding: 11px 17px; font-size: 10px; }
   .unified-app .workflow-status { margin: 10px 3px 20px; font-size: 10px; }
@@ -316,7 +316,7 @@
   .result-detail-grid h3 { font-size: 11px; }
   .result-export { padding: 20px 0 0; border-left: 0; border-top: 1px solid var(--lab-line); }
   .measurement-calibration-fields { grid-template-columns: 1fr; gap: 13px; }
-  .export-buttons button { min-height: 43px; }
+  .export-buttons button { min-height: 44px; }
   .unified-app .editor-panel { margin: 0 -17px; }
   .unified-app .editor-disclosure { flex-direction: column; align-items: flex-start; gap: 12px; padding: 17px; }
   .unified-app .editor-disclosure button { width: 100%; }

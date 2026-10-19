@@ -347,8 +347,8 @@ test("visual skip never runs unavailable stages or releases a real processing st
   await expect(available(page, "rectify")).toHaveCount(0);
   await page.locator("#journeySkip").click();
   await expect(page.locator("#debugActivity")).toContainText("ArUco検出・候補で停止中");
-  await expect(page.locator("#journeyCancel")).toBeVisible();
-  await page.locator("#journeyCancel").click();
+  await expect(page.locator("#analysisCancel")).toBeVisible();
+  await page.locator("#analysisCancel").click();
   await expect(page.locator("#status")).toContainText("中止");
   await expect(journey(page)).toHaveAttribute("data-processing", "cancelled");
   await noAnalysis(page);
@@ -504,7 +504,7 @@ test("narrow touch controls remain reachable without horizontal page overflow", 
     await page.locator("#journey-root").scrollIntoViewIfNeeded();
     const size = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
     expect(size.scroll).toBeLessThanOrEqual(size.client + 1);
-    for (const id of ["journeyPlay", "journeyReplay", "journeySkip", "analyze", "journeyEdit"]) {
+    for (const id of ["journeyPlay", "journeyReplay", "journeySkip", "analyze", "toggleEditor"]) {
       const control = page.locator(`#${id}`);
       await control.scrollIntoViewIfNeeded();
       await expect(control).toBeVisible();
@@ -522,7 +522,7 @@ test("narrow touch controls remain reachable without horizontal page overflow", 
     await page.locator("#journeySkip").tap();
     await expect(journey(page)).toHaveAttribute("data-stage", "rectify");
   }
-  await page.locator("#journeyEdit").tap();
+  await page.locator("#toggleEditor").tap();
   await expect(page.locator("#editorSurface")).toBeVisible();
   await expect(journey(page)).toHaveAttribute("data-playback", "editing");
   await page.screenshot({ path: info.outputPath("continuous-touch-320-393.png"), fullPage: true });
